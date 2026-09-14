@@ -68,3 +68,18 @@ Fase 1 dapat dianggap siap untuk pengembangan apabalia :
 9. Gunakan data sintetis untuk seluruh objek dan transaksi.
 10. Ubah cakupan fitur pasien sintetis menjadi pengelolaan data sintetis.
 11. Uji skenario yang melibatkan minimal lima peran berbeda.
+
+# Progres Antarmuka Frontend — 14 September 2026 (WIB)
+
+Penyelesaian berikut berlaku untuk frontend demo, bukan penyelesaian backend atau seluruh Fase 1.
+
+- [x] AppShell navbar atas dengan kelompok dropdown sesuai Administrator, Dosen, dan Mahasiswa; tanpa sidebar atau scroll horizontal navbar.
+- [x] Bahasa visual healthcare dengan bidang putih, heading navy, aksen biru/cyan, status, breadcrumb, dan bantuan kontekstual; mempertahankan Next.js serta foundation shadcn.
+- [x] Dashboard peran, skenario, sesi/penugasan, briefing, simulasi rawat jalan dasar, master, monitor, penilaian deskriptif, umpan balik, dan laporan demo.
+- [x] Memisahkan tipe/data mock, master, skenario, transaksi percobaan, riwayat penilaian, serta audit frontend.
+- [x] Validasi pendaftaran, status terkunci, sesi dijeda/berakhir, konfirmasi dengan alasan, dan reset yang mempertahankan master/riwayat penilaian.
+- [x] Typecheck, lint, 14 pengujian transisi data, build produksi, dan pemeriksaan browser navbar tiga peran pada 1920, 1600, 1440, 1366, 1280, serta 1024 px; tambahan pemeriksaan 390 px.
+- [ ] Integrasi autentikasi/otorisasi server, penyimpanan permanen, dan API mengikuti kontrak yang kelak disepakati; tidak termasuk perubahan UI ini.
+- [ ] Pengelolaan penuh multi-sesi dan CRUD seluruh master/akademik; saat ini satu sesi operasional demo dan sebagian data berupa tampilan baca.
+
+Rincian fitur, pengujian, keputusan, dan keterbatasan: `Reports/redesign-ui-fase-1.md` di akar repository.
