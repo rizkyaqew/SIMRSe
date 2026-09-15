@@ -6,23 +6,17 @@ import { FieldGroup } from "@/components/ui/field"
 import { useDemo } from "./provider"
 import { PageHeading } from "./dashboard"
 import {
+  ActionLink,
   Confirm,
   DataTable,
   EmptyState,
   FormField,
   Notice,
   Panel,
-  SelectControl,
   Status,
   useUnsavedChanges,
 } from "./ui"
-import {
-  academic,
-  formatDate,
-  formatTime,
-  rupiah,
-  tariffs,
-} from "@/lib/simrs/data"
+import { academic, formatDate, formatTime } from "@/lib/simrs/data"
 import type { AuditEntry, Review } from "@/lib/simrs/types"
 import {
   Dialog,
@@ -130,7 +124,7 @@ export function Evaluation({ feedback = false }: { feedback?: boolean }) {
                 state.participants.find((p) => p.id === selected?.participantId)
                   ?.name
               }{" "}
-              · SESI-001
+              · {state.activeSessionId}
             </DialogDescription>
           </DialogHeader>
           <p>
@@ -148,9 +142,9 @@ export function Evaluation({ feedback = false }: { feedback?: boolean }) {
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!comment.trim()}
-              onClick={() => {
+              onClick={async () => {
                 if (!selected) return
-                dispatch({
+                const ok = await dispatch({
                   type: "review",
                   review: {
                     ...selected,
@@ -159,6 +153,7 @@ export function Evaluation({ feedback = false }: { feedback?: boolean }) {
                     published: false,
                   },
                 })
+                if (!ok) return
                 setSelected(null)
                 setMessage("Penilaian tersimpan; umpan balik belum dibuka.")
               }}
@@ -195,9 +190,9 @@ export function Evaluation({ feedback = false }: { feedback?: boolean }) {
             ? "Mahasiswa terkait dapat membaca umpan balik yang Anda tulis. Tindakan tercatat dalam audit demo."
             : "Status hasil menjadi Dikembalikan dan komentar dapat dibaca mahasiswa. Pembukaan ulang transaksi belum tersedia; gunakan pengulangan percobaan dengan alasan bila diperlukan."
         }
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!selected) return
-          dispatch({
+          const ok = await dispatch({
             type: "review",
             review: {
               ...selected,
@@ -206,6 +201,7 @@ export function Evaluation({ feedback = false }: { feedback?: boolean }) {
               published: true,
             },
           })
+          if (!ok) return false
           setSelected(null)
           setMessage("Umpan balik berhasil diperbarui.")
         }}
@@ -227,13 +223,13 @@ export function Observations() {
       {saved && <Notice title="Catatan observasi berhasil disimpan." />}
       <Panel
         title="Observasi sesi aktif"
-        description="SESI-001 · Alur pelayanan rawat jalan"
+        description={`${state.activeSessionId} · ${state.sessions[0].title}`}
       >
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault()
             if (!text.trim()) return
-            dispatch({ type: "observe", text })
+            if (!(await dispatch({ type: "observe", text }))) return
             setText("")
             setSaved(true)
           }}
@@ -369,93 +365,88 @@ export function Audit() {
 }
 export function Reports() {
   const { state } = useDemo()
-  const [filter, setFilter] = useState("Percobaan aktif")
-  const total = tariffs.reduce((sum, t) => sum + t.amount, 0)
-  const visits =
-    filter === "Percobaan aktif"
-      ? state.attempt.visits
-      : state.history.flatMap((a) => a.visits)
-  function download() {
-    const data = [
-      "DOKUMEN SIMULASI — SIMRS-e",
-      `${academic.course} | ${academic.classroom} | ${academic.group}`,
-      `SESI-001 | ${filter} | Pengunduh: ${state.role}`,
-      "Seluruh identitas dan transaksi merupakan data sintetis.",
-      "",
-      "Kunjungan\tPasien\tAntrean\tStatus\tPembayaran\tPercobaan",
-      ...visits.map(
-        (v) =>
-          `${v.id}\t${v.name}\t${v.queue}\t${v.status}\t${v.paid ? "Lunas dummy" : "Belum lunas"}\t${v.attempt}`
-      ),
-    ].join("\n")
-    const url = URL.createObjectURL(
-      new Blob([data], { type: "text/plain;charset=utf-8" })
-    )
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = "SIMRS-e-DOKUMEN-SIMULASI.txt"
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
+  const attempts = [...state.history, state.attempt].map((a) => ({
+    ...a,
+    id: String(a.number),
+  }))
+  const participants =
+    state.role === "Mahasiswa"
+      ? state.participants.filter((p) => p.id === state.participantId)
+      : state.participants
   return (
     <div className="page-stack">
       <PageHeading
         title="Laporan hasil praktikum"
-        description="Ringkasan data transaksi kelompok dan riwayat pengulangan sesi."
-        action={
-          <Button variant="outline" onClick={download}>
-            Unduh laporan simulasi
-          </Button>
-        }
+        description={`${state.activeSessionId} · ${academic.classroom} · ${academic.group}`}
       />
-      <Notice title="DOKUMEN SIMULASI">
-        Angka dihitung dari kunjungan dalam percobaan yang dipilih. Laporan ini
-        berisi data sintetis untuk pembelajaran.
+      <Notice title="Laporan pembelajaran">
+        Progres, penyerahan, penilaian, dan riwayat percobaan berada di SIMRS-e.
+        Rincian kunjungan serta tagihan tersedia di laporan operasional.
       </Notice>
-      <div className="module-card-grid">
-        <Panel title="Kunjungan tercatat">
-          <strong className="text-3xl">{visits.length}</strong>
-          <p className="text-muted-foreground">Jumlah kunjungan tersimpan</p>
-        </Panel>
-        <Panel title="Pelayanan selesai">
-          <strong className="text-3xl">
-            {visits.filter((v) => v.status === "Selesai").length}
-          </strong>
-          <p className="text-muted-foreground">Kunjungan berstatus selesai</p>
-        </Panel>
-        <Panel title="Pembayaran dummy">
-          <strong className="text-3xl">
-            {rupiah(visits.filter((v) => v.paid).length * total)}
-          </strong>
-          <p className="text-muted-foreground">
-            Total tagihan simulasi yang lunas
-          </p>
-        </Panel>
-      </div>
-      <Panel title="Rincian hasil">
+      <ActionLink href="/simrs/laporan">Lihat laporan operasional</ActionLink>
+      <Panel title="Progres dan hasil peserta">
         <DataTable
-          rows={visits}
-          search={(v) => `${v.id} ${v.name}`}
-          placeholder="Cari kunjungan..."
-          filters={
-            <SelectControl
-              label="Cakupan laporan"
-              options={["Percobaan aktif", "Riwayat percobaan"]}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            />
-          }
+          rows={participants}
+          search={(p) => `${p.id} ${p.name}`}
           columns={[
-            { label: "Kunjungan", render: (v) => v.id },
-            { label: "Nama sintetis", render: (v) => v.name },
-            { label: "Percobaan", render: (v) => v.attempt },
             {
-              label: "Status pelayanan",
-              render: (v) => <Status>{v.status}</Status>,
+              label: "Peserta",
+              render: (p) => (
+                <>
+                  <strong>{p.name}</strong>
+                  <small className="block">{p.actor}</small>
+                </>
+              ),
+            },
+            { label: "Progres", render: (p) => `${p.progress}%` },
+            {
+              label: "Status tugas",
+              render: (p) => <Status>{p.status}</Status>,
             },
             {
-              label: "Pembayaran",
-              render: (v) => <Status>{v.paid ? "Lunas" : "Menunggu"}</Status>,
+              label: "Umpan balik percobaan ini",
+              render: (p) => {
+                const review = state.reviews.find(
+                  (r) =>
+                    r.participantId === p.id &&
+                    r.attempt === state.attempt.number
+                )
+                return review?.published
+                  ? review.comment
+                  : review
+                    ? "Menunggu tinjauan/publikasi dosen"
+                    : "Belum diserahkan"
+              },
+            },
+          ]}
+        />
+      </Panel>
+      <Panel title="Riwayat percobaan">
+        <DataTable
+          rows={attempts}
+          search={(a) => String(a.number)}
+          columns={[
+            { label: "Percobaan", render: (a) => a.number },
+            {
+              label: "Status",
+              render: (a) => (
+                <Status>
+                  {a.number === state.attempt.number ? a.status : "Riwayat"}
+                </Status>
+              ),
+            },
+            { label: "Bukti kunjungan", render: (a) => a.visits.length },
+            {
+              label: "Penilaian tersimpan",
+              render: (a) =>
+                state.reviews.filter((r) => r.attempt === a.number).length,
+            },
+            {
+              label: "Batas waktu",
+              render: (a) =>
+                a.deadline
+                  ? `${formatDate(new Date(a.deadline).toISOString())} ${formatTime(new Date(a.deadline).toISOString())} WIB`
+                  : "Belum dimulai",
             },
           ]}
         />

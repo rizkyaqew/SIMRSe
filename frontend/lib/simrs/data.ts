@@ -1,7 +1,6 @@
 import type {
   Actor,
   AuditEntry,
-  MasterRow,
   Participant,
   Review,
   Scenario,
@@ -143,112 +142,7 @@ export const initialAudit: AuditEntry[] = [
     attempt: 1,
   },
 ]
-export const masterData: MasterRow[] = [
-  {
-    id: "UNIT-001",
-    name: "Poliklinik Rawat Jalan",
-    category: "Unit & poli",
-    detail: "Unit pelayanan · Poli Umum",
-    status: "Aktif",
-  },
-  {
-    id: "UNIT-002",
-    name: "Instalasi Rekam Medis",
-    category: "Unit & poli",
-    detail: "Unit administrasi pelayanan",
-    status: "Aktif",
-  },
-  {
-    id: "UNIT-003",
-    name: "Instalasi Farmasi",
-    category: "Unit & poli",
-    detail: "Unit penunjang simulasi",
-    status: "Aktif",
-  },
-  {
-    id: "UNIT-004",
-    name: "Laboratorium",
-    category: "Unit & poli",
-    detail: "Unit penunjang simulasi",
-    status: "Aktif",
-  },
-  {
-    id: "UNIT-005",
-    name: "Kasir Rawat Jalan",
-    category: "Unit & poli",
-    detail: "Administrasi pembayaran dummy",
-    status: "Aktif",
-  },
-  {
-    id: "SDM-001",
-    name: "Dokter Sintetis 001",
-    category: "SDM & jadwal",
-    detail: "Poli Umum · Senin–Jumat, 08:00–12:00",
-    status: "Aktif",
-  },
-  {
-    id: "SDM-002",
-    name: "Petugas Sintetis 002",
-    category: "SDM & jadwal",
-    detail: "Pendaftaran · Senin–Jumat, 07:00–14:00",
-    status: "Aktif",
-  },
-  {
-    id: "LAY-001",
-    name: "Administrasi pendaftaran",
-    category: "Layanan & tarif",
-    detail: "Rp15.000 · per kunjungan",
-    status: "Aktif",
-  },
-  {
-    id: "LAY-002",
-    name: "Pelayanan rawat jalan",
-    category: "Layanan & tarif",
-    detail: "Rp50.000 · per kunjungan",
-    status: "Aktif",
-  },
-  {
-    id: "JMN-001",
-    name: "Umum",
-    category: "Penjamin",
-    detail: "Pembayaran mandiri simulasi",
-    status: "Aktif",
-  },
-  {
-    id: "JMN-002",
-    name: "JKN Simulasi",
-    category: "Penjamin",
-    detail: "Verifikasi internal · tanpa integrasi",
-    status: "Aktif",
-  },
-  {
-    id: "OBT-001",
-    name: "Obat Simulasi A",
-    category: "Obat & bahan",
-    detail: "100 unit · stok pembelajaran",
-    status: "Aktif",
-  },
-  {
-    id: "RNG-001",
-    name: "Ruang Pemeriksaan 01",
-    category: "Ruangan",
-    detail: "Poli Umum · kapasitas 1",
-    status: "Aktif",
-  },
-]
-export const patientSeed = {
-  name: "Pasien Sintetis 001",
-  identity: "SINT-0001",
-  birthDate: "1995-01-15",
-  gender: "Perempuan",
-  address: "Jalan Simulasi No. 1, Kota Edukasi",
-  payer: "Umum",
-  unit: "Poli Umum",
-}
-export const tariffs = [
-  { name: "Administrasi pendaftaran", amount: 15000 },
-  { name: "Pelayanan rawat jalan", amount: 50000 },
-]
+export { masterData, patientSeed, tariffs } from "../core/catalog"
 export const materials = [
   {
     id: "MAT-001",
@@ -307,30 +201,4 @@ export const actorTasks: Record<Actor, string[]> = {
     "Catat pembayaran dummy",
   ],
 }
-export function formatDate(value: string) {
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    timeZone: "Asia/Jakarta",
-  })
-    .format(new Date(value))
-    .replaceAll(" ", "-")
-}
-export function formatTime(value: string) {
-  return new Intl.DateTimeFormat("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone: "Asia/Jakarta",
-  })
-    .format(new Date(value))
-    .replace(".", ":")
-}
-export function rupiah(value: number) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value)
-}
+export { formatDate, formatTime, rupiah } from "../platform/format"

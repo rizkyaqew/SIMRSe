@@ -173,13 +173,16 @@ export function SelectControl({
   ...props
 }: Omit<React.ComponentProps<typeof NativeSelect>, "children"> & {
   label: string
-  options: string[]
+  options: (string | { value: string; label: string })[]
 }) {
   return (
     <NativeSelect aria-label={label} {...props}>
       {options.map((option) => (
-        <NativeSelectOption key={option} value={option}>
-          {option}
+        <NativeSelectOption
+          key={typeof option === "string" ? option : option.value}
+          value={typeof option === "string" ? option : option.value}
+        >
+          {typeof option === "string" ? option : option.label}
         </NativeSelectOption>
       ))}
     </NativeSelect>
@@ -222,11 +225,12 @@ export function Confirm({
   onClose: () => void
   title: string
   description: string
-  onConfirm: (reason: string) => void
+  onConfirm: (reason: string) => void | boolean | Promise<void | boolean>
   label?: string
   requireReason?: boolean
 }) {
   const [reason, setReason] = useState("")
+  const [saving, setSaving] = useState(false)
   return (
     <Dialog
       open={open}
@@ -253,18 +257,25 @@ export function Confirm({
           </FormField>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" disabled={saving} onClick={onClose}>
             Batal
           </Button>
           <Button
-            disabled={requireReason && !reason.trim()}
-            onClick={() => {
-              onConfirm(reason)
+            disabled={saving || (requireReason && !reason.trim())}
+            onClick={async () => {
+              setSaving(true)
+              let result: void | boolean
+              try {
+                result = await onConfirm(reason)
+              } finally {
+                setSaving(false)
+              }
+              if (result === false) return
               setReason("")
               onClose()
             }}
           >
-            {label}
+            {saving ? "Memproses…" : label}
           </Button>
         </DialogFooter>
       </DialogContent>

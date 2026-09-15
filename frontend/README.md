@@ -1,46 +1,60 @@
-# SIMRS-e Fase 1 — Frontend demo
+# SIMRS-e Fase 1 — SIMRS Inti dan simulasi
 
-Antarmuka pembelajaran administrasi rumah sakit dengan data sintetis. Menggunakan Next.js App Router, React, TypeScript, Tailwind, shadcn preset Base UI yang sudah terpasang, dan Hugeicons.
+Demo pembelajaran administrasi rumah sakit dengan data sintetis. Mempertahankan Next.js App Router, React, TypeScript, Tailwind, shadcn Base UI dan Hugeicons. Satu engine SIMRS Inti digunakan area operasional dan praktikum.
 
-## Menjalankan aplikasi
+## Menjalankan
 
-Jalankan dari folder `frontend`:
+Dari folder `frontend`:
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Buka `http://localhost:3000`. Beranda awal menggunakan akun Dosen. Menu akun di kanan atas → **Pilih akun demo** menyediakan Administrator, Dosen, dan enam akun Mahasiswa dengan penugasan berbeda. Tidak diperlukan kata sandi karena belum ada layanan autentikasi.
+Buka `http://localhost:3000/login`. Pilih akun contoh Administrator, Dosen atau Mahasiswa. Tidak diperlukan kata sandi; ini pemilih akun demo, bukan autentikasi produksi. Hak akses URL/aksi diperiksa server berdasarkan akun aktif dan penugasan sesi.
+
+Data disimpan sementara pada memori server, terpisah untuk setiap lingkungan browser. Refresh tidak menghapus transaksi. Data berakhir setelah 8 jam atau restart server. Berganti akun pada browser yang sama mempertahankan lingkungan untuk mencoba serah-terima antarperan. Browser/perangkat lain memiliki lingkungan terpisah.
 
 ## Mencoba alur lengkap
 
-1. Sebagai Dosen, buka **Praktikum → Sesi praktikum → Ulangi percobaan**, isi alasan, lalu konfirmasi. Ini membersihkan status contoh mahasiswa yang sudah submit dan memulai percobaan bersama yang baru.
-2. Pilih Mahasiswa Demo 01, baca briefing, lalu **Mulai praktikum**. Pada pendaftaran, gunakan **Gunakan pasien dari skenario** dan simpan. Identitas berformat `SINT-0001` serta nama mengandung kata `Sintetis`.
-3. Melalui menu akun tanpa memuat ulang halaman, pilih Mahasiswa Demo 03 sebagai Dokter. Pada tab pelayanan, proses kunjungan, simpan catatan simulasi, lalu selesaikan pelayanan.
-4. Pilih Mahasiswa Demo 06 sebagai Kasir untuk mengonfirmasi pembayaran dummy setelah pelayanan selesai.
-5. Mahasiswa dapat menyerahkan hasil tugasnya. Pilih Dosen untuk meninjau penilaian, memberi umpan balik, melihat laporan, dan memeriksa audit melalui monitor.
-6. Dosen dapat menjeda/melanjutkan atau mengulangi percobaan dengan alasan. Penutupan sesi mengunci transaksi. Reset mempertahankan master, audit, riwayat percobaan, dan penilaian selama aplikasi terbuka.
+1. Sebagai Dosen, buka **Praktikum → Sesi praktikum**. Pilih sesi pertama dan **Ulangi percobaan** dengan alasan untuk membersihkan status submit contoh. Master, audit dan penilaian lama tetap disimpan.
+2. Menu profil → **Pilih akun demo** → Mahasiswa Demo 01. Baca briefing lalu **Mulai praktikum**. Gunakan data pasien contoh, centang verifikasi identitas/penjamin, lalu simpan pendaftaran.
+3. Ganti ke Mahasiswa Demo 03 (Dokter) pada browser yang sama. Lanjutkan praktikum, panggil pasien, buka rawat jalan/rekam medis, verifikasi kunjungan dan mulai pelayanan. Isi catatan sintetis, simpan, finalisasi, kemudian selesaikan pelayanan. Riwayat menyimpan versi draft/final; koreksi harus beralasan.
+4. Ganti ke Mahasiswa Demo 06 (Kasir). Periksa rincian tarif dan catat pembayaran dummy Rp65.000 untuk administrasi + pelayanan dasar. Tindakan tambahan yang dipilih dokter menambah tagihan sesuai master. Deposit, ditolak, refund dan pembatalan mengikuti aturan status/saldo.
+5. Serahkan hasil. Akun yang submit terkunci. Ganti ke Dosen untuk monitoring, observasi, penilaian deskriptif dan publikasi feedback. Laporan belajar terpisah dari laporan operasional.
+6. Pilih **SIMRS Inti** di header untuk mengakses pasien, appointment, antrean, rekam medis dan keuangan sesuai capability. Data dan engine sama dengan praktikum aktif. Administrator mengelola master; Dosen mengamati tanpa mengambil alih transaksi.
+7. Sesi kedua mempunyai penugasan dan data tersendiri. Dosen dapat membukanya atau membuat sesi dari skenario terpublikasi. Pergantian sesi/reset tidak menghapus transaksi, audit dan penilaian sesi lainnya.
 
-## Verifikasi
+## Pengujian
 
 ```powershell
 npm run typecheck
 npm run lint
 npm test
+npm run test:integration
 npm run build
 ```
 
-`scripts/demo.test.mjs` menguji transisi data dan pembatasan peran/status tanpa backend atau tambahan test framework. TypeScript dikompilasi ke modul dalam memori selama pengujian.
+`npm test` menjalankan 32 test domain/regresi. `test:integration` menjalankan dua rangkaian HTTP dan membutuhkan server pada port 3000. Untuk server pada port berbeda:
+
+```powershell
+$env:SIMRS_TEST_URL = 'http://localhost:3001'
+npm run test:integration
+Remove-Item Env:SIMRS_TEST_URL
+```
+
+Test memakai data sintetis dan lingkungan terpisah, tanpa membaca cookie browser pengguna. Untuk mencoba hasil build, jalankan `npm run start -- --port 3001` sesudah `npm run build`.
 
 ## Struktur dan batasan
 
-- `lib/simrs/`: tipe, data sintetis terpusat, menu/hak akses, validasi, dan transisi state.
-- `components/simrs/`: AppShell navbar, halaman dan komponen aplikasi.
-- `components/ui/`: komponen shadcn/Base UI.
-- `app/[module]/`: halaman modul pada App Router.
-- `public/images/hospital-education.png`: ilustrasi dekoratif hasil ImageGen.
+- `lib/platform`: akun, Role, capability, izin modul, Principal dan fakta audit bersama.
+- `lib/core`: master/pasien/kunjungan/rekam medis/charge/payment, validasi dan engine transaksi tunggal tanpa konteks pendidikan.
+- `lib/simrs`: akademik/skenario/sesi/attempt/penilaian, snapshot, adapter dan facade kompatibilitas.
+- `lib/server` serta `app/api`: sesi cookie dan state server demo, pemeriksaan aksi/revisi/scope serta penyaringan response.
+- `components/core`: UI transaksi yang dipakai kembali melalui `components/simrs/core-area.tsx`.
+- `components/simrs`: AppShell navbar dan UI pembelajaran existing. `components/platform` memakai ulang primitive existing; `components/ui` tetap shadcn.
+- Route `/[module]` lama tetap tersedia. `/simrs` dan `/simrs/[section]` merupakan tambahan, bukan migrasi route massal.
 
-Data transaksi berada dalam memori browser. Refresh mengembalikan data awal; hanya identitas akun demo disimpan dalam `sessionStorage`. Pembatasan frontend bukan autentikasi/otorisasi server. Satu sesi bersama dapat diproses; sesi tambahan hanya dijadwalkan/ditampilkan. Konfigurasi, pengguna, dan sebagian master berupa tampilan baca. Farmasi/laboratorium menampilkan tugas dan informasi observasi, tanpa modul operasional tahap berikutnya.
+Tidak ada database, migration, integrasi produksi atau pembayaran nyata. Akademik, materi/kuis, konfigurasi dan sebagian master masih mengikuti cakupan demo existing. Farmasi/laboratorium tetap observasi tanpa engine tahap lanjut. Lampiran rekam medis berupa keterangan teks, belum upload berkas. Appointment sederhana, tanpa kapasitas/jadwal kompleks. Penyimpanan permanen dan kolaborasi banyak perangkat belum tersedia.
 
-Laporan lengkap: [`../Reports/redesign-ui-fase-1.md`](../Reports/redesign-ui-fase-1.md). Dokumen produk berada di `../AI/Fase 1/`.
+Laporan arsitektur, API, hasil pengujian dan batasan: [`../Reports/simrs-inti-integrasi.md`](../Reports/simrs-inti-integrasi.md). Dokumen produk berada di `../AI/Fase 1/`.

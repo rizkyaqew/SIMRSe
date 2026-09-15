@@ -1,12 +1,8 @@
-/** Demo contracts: keep master, scenario, and attempt data separate. */
-export type Role = "Administrator" | "Dosen" | "Mahasiswa"
-export type Actor =
-  | "Petugas Pendaftaran"
-  | "Petugas Rekam Medis"
-  | "Dokter"
-  | "Petugas Farmasi"
-  | "Petugas Laboratorium"
-  | "Kasir"
+/** Compatibility contracts; hospital facts are owned by core. */
+import type { Actor } from "../platform/types"
+import type { CoreState, PatientInput, QueueStatus } from "../core/types"
+export type { Role, Actor } from "../platform/types"
+export type { MasterRow, PatientInput } from "../core/types"
 export interface Participant {
   id: string
   name: string
@@ -26,6 +22,7 @@ export interface Scenario {
   group: string
   duration: number
   status: "Draft" | "Uji Coba" | "Dipublikasikan" | "Diarsipkan"
+  initialData?: CoreState
 }
 export interface Session {
   id: string
@@ -37,20 +34,11 @@ export interface Session {
   classroom: string
   duration: number
 }
-export interface PatientInput {
-  name: string
-  identity: string
-  birthDate: string
-  gender: string
-  address: string
-  payer: string
-  unit: string
-}
 export interface Visit extends PatientInput {
   id: string
   rm: string
   queue: string
-  status: "Menunggu" | "Dilayani" | "Selesai"
+  status: QueueStatus
   note: string
   paid: boolean
   attempt: number
@@ -67,6 +55,8 @@ export interface AuditEntry {
   after: string
   session: string
   attempt: number
+  feature?: string
+  source?: string
 }
 export interface Review {
   participantId: string
@@ -80,13 +70,7 @@ export interface Attempt {
   status: "Belum dimulai" | "Berjalan" | "Submit"
   deadline: number | null
   visits: Visit[]
-}
-export interface MasterRow {
-  id: string
-  name: string
-  category: string
-  detail: string
-  status: string
+  core: CoreState
 }
 export interface NavItem {
   path: string

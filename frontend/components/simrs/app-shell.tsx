@@ -1,4 +1,5 @@
 "use client"
+import { canReadCore } from "@/lib/platform/core-access"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -30,6 +31,7 @@ import { ActionLink, EmptyState, Icon, Status } from "./ui"
 import { canAccess, moduleInfo, navigation } from "@/lib/simrs/navigation"
 import { formatTime } from "@/lib/simrs/data"
 import { participant } from "@/lib/simrs/store"
+import { coreGroups, coreModules, type CoreModule } from "@/lib/core/navigation"
 
 export function Brand() {
   return (
@@ -73,8 +75,14 @@ function SessionBar() {
               .padStart(2, "0")}
             :{(seconds % 60).toString().padStart(2, "0")}
           </strong>
-          <span className="context-small">{participant(state).actor}</span>
-          <ActionLink href="/tugas">Lihat tugas</ActionLink>
+          <span className="context-small">
+            {state.role === "Dosen"
+              ? "Observasi dosen"
+              : participant(state).actor}
+          </span>
+          <ActionLink href={state.role === "Dosen" ? "/monitor" : "/tugas"}>
+            {state.role === "Dosen" ? "Monitor sesi" : "Lihat tugas"}
+          </ActionLink>
         </div>
       </div>
     </div>
@@ -86,6 +94,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const { setTheme, resolvedTheme } = useTheme()
   const slug = path.split("/")[1] ?? ""
+  const core = slug === "simrs"
+  const selectedPath = core ? path.slice(1) : slug
+  const groups = core
+    ? coreGroups
+        .map((group) => ({
+          label: group.label,
+          items: group.items
+            .filter((item) =>
+              canReadCore(state.role, participant(state).actor, item)
+            )
+            .map((item) => ({
+              path: `simrs/${item}`,
+              label: coreModules[item],
+              description: "SIMRS Inti · data sintetis",
+            })),
+        }))
+        .filter((group) => group.items.length)
+    : navigation[state.role]
   const login = slug === "login"
   const person =
     state.role === "Mahasiswa"
@@ -221,9 +247,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <DropdownMenuSeparator />
                     <DropdownMenuGroup>
                       <DropdownMenuItem
-                        onClick={() => {
-                          dispatch({ type: "logout" })
-                          router.push("/login")
+                        onClick={async () => {
+                          if (await dispatch({ type: "logout" }))
+                            router.push("/login")
                         }}
                       >
                         <Icon icon={Logout01Icon} />
@@ -237,6 +263,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         {!login && state.signedIn && (
+          <div
+            className="shell-width workspace-switcher"
+            aria-label="Area platform"
+          >
+            <Link href="/" aria-current={!core ? "page" : undefined}>
+              Simulasi & pembelajaran
+            </Link>
+            <Link href="/simrs" aria-current={core ? "page" : undefined}>
+              SIMRS Inti
+            </Link>
+          </div>
+        )}
+        {!login && state.signedIn && (
           <div className="nav-border">
             <nav
               className="shell-width top-navigation"
@@ -244,18 +283,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <Link
                 className="nav-home"
-                data-active={slug === ""}
-                aria-current={slug === "" ? "page" : undefined}
-                href="/"
+                data-active={core ? path === "/simrs" : slug === ""}
+                aria-current={
+                  (core ? path === "/simrs" : slug === "") ? "page" : undefined
+                }
+                href={core ? "/simrs" : "/"}
               >
                 <Icon icon={Home01Icon} />
-                Beranda
+                {core ? "Operasional" : "Beranda"}
               </Link>
-              {navigation[state.role].map((group) => (
+              {groups.map((group) => (
                 <DropdownMenu key={group.label}>
                   <DropdownMenuTrigger
                     className="nav-trigger"
-                    data-active={group.items.some((item) => item.path === slug)}
+                    data-active={group.items.some(
+                      (item) => item.path === selectedPath
+                    )}
                   >
                     {group.label}
                     <Icon icon={ArrowDown01Icon} />
@@ -271,7 +314,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           key={item.path}
                           nativeButton={false}
                           render={<Link href={`/${item.path}`} />}
-                          aria-current={item.path === slug ? "page" : undefined}
+                          aria-current={
+                            item.path === selectedPath ? "page" : undefined
+                          }
                         >
                           <div>
                             <strong>{item.label}</strong>
@@ -293,7 +338,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </header>
-      {state.signedIn && !login && state.role === "Mahasiswa" && <SessionBar />}
+      {state.signedIn &&
+        !login &&
+        (state.role === "Mahasiswa" || (core && state.role === "Dosen")) && (
+          <SessionBar />
+        )}
       <main id="main-content" className="shell-width main-content">
         {!login && (
           <nav className="breadcrumb" aria-label="Breadcrumb">
@@ -305,7 +354,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <>
                 <span>/</span>
                 <span aria-current="page">
-                  {moduleInfo[slug]?.label ??
+                  {(core
+                    ? coreModules[
+                        (path.split("/")[2] || "ringkasan") as CoreModule
+                      ]
+                    : moduleInfo[slug]?.label) ??
                     (slug === "bantuan"
                       ? "Pusat bantuan"
                       : "Halaman tidak ditemukan")}
@@ -331,7 +384,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             action={<ActionLink href="/">Kembali ke beranda</ActionLink>}
           />
         ) : (
-          children
+          <div
+            key={`${state.role}-${state.participantId}-${state.activeSessionId}-${state.attempt.number}`}
+          >
+            {children}
+          </div>
         )}
       </main>
       {!login && (
@@ -367,7 +424,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="footer-note">
             <span>© 2026 SIMRS-e · Lingkungan pembelajaran</span>
             <span>
-              Demo lokal · Perubahan direset saat halaman dimuat ulang
+              Demo lokal · Data tersimpan sementara selama server berjalan
             </span>
           </div>
         </footer>

@@ -1,34 +1,10 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
-import ts from "typescript"
-
-// Compile pure domain modules in memory: no test dependencies or generated files.
-const uri = (source) =>
-  `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
-async function compile(file, replacements = {}) {
-  const input = await readFile(
-    new URL(`../lib/simrs/${file}.ts`, import.meta.url),
-    "utf8"
-  )
-  let output = ts.transpileModule(input, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-  }).outputText
-  for (const [key, value] of Object.entries(replacements))
-    output = output.replaceAll(`"${key}"`, JSON.stringify(value))
-  return uri(output)
-}
-const dataUri = await compile("data")
-const validationUri = await compile("validation")
-const { initialState, transition, lockReason } = await import(
-  await compile("store", { "./data": dataUri, "./validation": validationUri })
-)
-const { patientSeed } = await import(dataUri)
-const { validatePatient } = await import(validationUri)
-const { navigation, canAccess } = await import(await compile("navigation"))
+import { loadModule } from "./test-modules.mjs"
+const { initialState, transition, lockReason } = await loadModule("simrs/store")
+const { patientSeed } = await loadModule("core/catalog")
+const { validatePatient } = await loadModule("core/validation")
+const { navigation, canAccess } = await loadModule("simrs/navigation")
 const now = Date.now()
 const act = (state, action, time = now) => transition(state, action, time)
 const login = (state, role, id = "MHS-DEMO-01") =>

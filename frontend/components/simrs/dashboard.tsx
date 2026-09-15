@@ -1,6 +1,7 @@
 "use client"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Add01Icon,
   UserGroupIcon,
@@ -34,25 +35,8 @@ import {
 import { academic, formatDate, formatTime } from "@/lib/simrs/data"
 import { participant } from "@/lib/simrs/store"
 
-export function PageHeading({
-  title,
-  description,
-  action,
-}: {
-  title: string
-  description: string
-  action?: React.ReactNode
-}) {
-  return (
-    <div className="page-heading">
-      <div>
-        <h1>{title}</h1>
-        <p>{description}</p>
-      </div>
-      {action}
-    </div>
-  )
-}
+import { PageHeading } from "@/components/platform/shared"
+export { PageHeading } from "@/components/platform/shared"
 export function ParticipantTable({ compact = false }: { compact?: boolean }) {
   const { state } = useDemo()
   return (
@@ -132,7 +116,16 @@ export function ActivityList({ all = false }: { all?: boolean }) {
   )
 }
 export function Dashboard() {
-  const { state } = useDemo()
+  const { state, dispatch, pending } = useDemo()
+  const router = useRouter()
+  async function openSession(id: string, path: string) {
+    if (
+      id !== state.activeSessionId &&
+      !(await dispatch({ type: "select-session", id }))
+    )
+      return
+    router.push(path)
+  }
   const teacher = state.role === "Dosen"
   const admin = state.role === "Administrator"
   const stats = admin
@@ -178,7 +171,11 @@ export function Dashboard() {
         ]
       : [
           { label: "Kelas diikuti", value: 1, icon: UserGroupIcon },
-          { label: "Sesi ditugaskan", value: 1, icon: PlayIcon },
+          {
+            label: "Sesi ditugaskan",
+            value: state.sessions.length,
+            icon: PlayIcon,
+          },
           {
             label: "Percobaan saat ini",
             value: state.attempt.number,
@@ -335,7 +332,17 @@ export function Dashboard() {
                         <Icon icon={PlayIcon} />
                       </span>
                       <div>
-                        <Link href={teacher ? "/sesi" : "/sesi-aktif"}>
+                        <Link
+                          href={teacher ? "/sesi" : "/sesi-aktif"}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            if (!pending)
+                              void openSession(
+                                session.id,
+                                teacher ? "/sesi" : "/sesi-aktif"
+                              )
+                          }}
+                        >
                           <h3>{session.title}</h3>
                         </Link>
                         <p>
@@ -353,9 +360,14 @@ export function Dashboard() {
                         <Icon icon={UserGroupIcon} />
                         {state.participants.length} peserta
                       </span>
-                      <ActionLink
-                        href={
-                          teacher ? (i ? "/sesi" : "/monitor") : "/sesi-aktif"
+                      <Button
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() =>
+                          void openSession(
+                            session.id,
+                            teacher ? (i ? "/sesi" : "/monitor") : "/sesi-aktif"
+                          )
                         }
                       >
                         {teacher
@@ -363,7 +375,8 @@ export function Dashboard() {
                             ? "Detail sesi"
                             : "Monitor sesi"
                           : "Lanjutkan"}
-                      </ActionLink>
+                        <Icon icon={ArrowRight01Icon} />
+                      </Button>
                     </div>
                   </div>
                 ))}

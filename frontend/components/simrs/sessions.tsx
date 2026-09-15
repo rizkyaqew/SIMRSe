@@ -21,6 +21,7 @@ import {
 } from "./ui"
 import { academic, actors, actorTasks, formatDate } from "@/lib/simrs/data"
 import { participant } from "@/lib/simrs/store"
+import { SessionPicker } from "./session-picker"
 
 export function Sessions({ monitor = false }: { monitor?: boolean }) {
   const { state, dispatch } = useDemo()
@@ -48,17 +49,18 @@ export function Sessions({ monitor = false }: { monitor?: boolean }) {
         }
       />
       {message && <Notice title={message} />}
+      <SessionPicker />
       {create && (
         <Panel
           title="Jadwalkan sesi baru"
           description="Hanya skenario yang dipublikasikan dapat digunakan."
         >
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault()
               const scenario = state.scenarios.find((s) => s.id === scenarioId)
               if (!scenario || !date || !time) return
-              dispatch({
+              const ok = await dispatch({
                 type: "session",
                 session: {
                   id: `SESI-${Date.now()}`,
@@ -71,6 +73,7 @@ export function Sessions({ monitor = false }: { monitor?: boolean }) {
                   status: "Terjadwal",
                 },
               })
+              if (!ok) return
               setCreate(false)
               setMessage("Sesi baru berhasil dijadwalkan dalam demo.")
             }}
@@ -129,17 +132,30 @@ export function Sessions({ monitor = false }: { monitor?: boolean }) {
             action={<Status>{active.status}</Status>}
           >
             <div className="page-stack">
-              <p>{state.scenarios[0].objective}</p>
+              <p>
+                {
+                  state.scenarios.find((s) => s.id === active.scenarioId)
+                    ?.objective
+                }
+              </p>
               <div className="flex flex-wrap gap-3">
                 <ActionLink href="/monitor">Pantau aktivitas</ActionLink>
                 <Button
                   variant="outline"
                   disabled={active.status === "Ditutup"}
                   onClick={() =>
-                    setConfirm(active.status === "Dijeda" ? "lanjut" : "jeda")
+                    setConfirm(
+                      ["Dijeda", "Terjadwal"].includes(active.status)
+                        ? "lanjut"
+                        : "jeda"
+                    )
                   }
                 >
-                  {active.status === "Dijeda" ? "Lanjutkan sesi" : "Jeda sesi"}
+                  {active.status === "Terjadwal"
+                    ? "Buka sesi"
+                    : active.status === "Dijeda"
+                      ? "Lanjutkan sesi"
+                      : "Jeda sesi"}
                 </Button>
                 <Button
                   variant="outline"
@@ -310,9 +326,9 @@ export function Sessions({ monitor = false }: { monitor?: boolean }) {
               : "Status berlaku untuk semua peserta. Batas waktu tetap mengikuti waktu akhir percobaan."
         }
         onConfirm={(reason) => {
-          if (confirm === "reset") dispatch({ type: "reset", reason })
+          if (confirm === "reset") return dispatch({ type: "reset", reason })
           else
-            dispatch({
+            return dispatch({
               type: "session-status",
               status:
                 confirm === "tutup"
@@ -342,6 +358,7 @@ export function Briefing({ tasksOnly = false }: { tasksOnly?: boolean }) {
         }
         description="Pahami skenario, kenali peran, dan mulai dengan siap."
       />
+      <SessionPicker />
       <div className="workspace-grid">
         <div className="page-stack">
           <Panel
@@ -394,8 +411,8 @@ export function Briefing({ tasksOnly = false }: { tasksOnly?: boolean }) {
                     session.status !== "Sedang berjalan" ||
                     state.submitted.includes(person.id)
                   }
-                  onClick={() => {
-                    if (!started) dispatch({ type: "start" })
+                  onClick={async () => {
+                    if (!started && !(await dispatch({ type: "start" }))) return
                     router.push("/simulasi")
                   }}
                 >

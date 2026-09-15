@@ -42,9 +42,10 @@ export function Scenarios({ archive = false }: { archive?: boolean }) {
         key={editing === "new" ? "new" : editing.id}
         scenario={editing === "new" ? undefined : editing}
         onClose={() => setEditing(null)}
-        onSave={(scenario) => {
-          dispatch({ type: "scenario", scenario })
-          setEditing(null)
+        onSave={async (scenario) => {
+          const ok = await dispatch({ type: "scenario", scenario })
+          if (ok) setEditing(null)
+          return ok
         }}
       />
     )
@@ -130,7 +131,7 @@ function ScenarioEditor({
   onClose,
 }: {
   scenario?: Scenario
-  onSave: (scenario: Scenario) => void
+  onSave: (scenario: Scenario) => Promise<boolean>
   onClose: () => void
 }) {
   const [form, setForm] = useState({
@@ -170,15 +171,16 @@ function ScenarioEditor({
     setErrors(result)
     return Object.keys(result).length === 0
   }
-  function save(status: Scenario["status"]) {
-    if (!validate() || locked) return
-    setDirty(false)
-    onSave({
+  async function save(status: Scenario["status"]) {
+    if (!validate() || locked) return false
+    const ok = await onSave({
       ...form,
       id: scenario?.id ?? `SK-${Date.now()}`,
       duration: Number(form.duration),
       status,
     })
+    if (ok) setDirty(false)
+    return ok
   }
   return (
     <div className="page-stack">

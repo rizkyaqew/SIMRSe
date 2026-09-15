@@ -79,7 +79,26 @@ Penyelesaian berikut berlaku untuk frontend demo, bukan penyelesaian backend ata
 - [x] Memisahkan tipe/data mock, master, skenario, transaksi percobaan, riwayat penilaian, serta audit frontend.
 - [x] Validasi pendaftaran, status terkunci, sesi dijeda/berakhir, konfirmasi dengan alasan, dan reset yang mempertahankan master/riwayat penilaian.
 - [x] Typecheck, lint, 14 pengujian transisi data, build produksi, dan pemeriksaan browser navbar tiga peran pada 1920, 1600, 1440, 1366, 1280, serta 1024 px; tambahan pemeriksaan 390 px.
-- [ ] Integrasi autentikasi/otorisasi server, penyimpanan permanen, dan API mengikuti kontrak yang kelak disepakati; tidak termasuk perubahan UI ini.
-- [ ] Pengelolaan penuh multi-sesi dan CRUD seluruh master/akademik; saat ini satu sesi operasional demo dan sebagian data berupa tampilan baca.
+- [ ] Penyimpanan permanen, autentikasi pengguna sebenarnya dan kolaborasi multi-perangkat. Pemeriksaan akun/aksi server untuk demo telah ditambahkan pada iterasi SIMRS Inti di bawah.
+- [ ] CRUD seluruh master/akademik dan pengelolaan kelas lengkap. Isolasi transaksi/penugasan beberapa sesi demo telah ditambahkan pada iterasi SIMRS Inti di bawah.
 
 Rincian fitur, pengujian, keputusan, dan keterbatasan: `Reports/redesign-ui-fase-1.md` di akar repository.
+
+# Progres SIMRS Inti dan Integrasi — 14 September 2026
+
+Cakupan: aplikasi demo dengan server Next.js yang sama dan data sementara, bukan SIMRS produksi atau penyelesaian seluruh Fase 1.
+
+- [x] Memisahkan Platform/shared, SIMRS Inti dan SIMRS-e dengan satu engine transaksi serta adapter/projection kompatibilitas.
+- [x] Pasien kanonis/No. RM, pencarian/detail, pendaftaran baru/lama/datang langsung, appointment sederhana dan kunjungan.
+- [x] Antrean menunggu/dipanggil/dilayani/selesai, pembatalan/no-show beralasan, verifikasi rawat jalan dan serah-terima antarperan.
+- [x] Rekam medis terstruktur, draft/final, koreksi beralasan, riwayat versi dan read-only sesuai status/capability.
+- [x] Charge layanan aktual, snapshot tarif, tagihan, pembayaran/deposit/ditolak/refund/pembatalan dummy dan laporan operasional dasar.
+- [x] Akun demo server, cookie HttpOnly, akun nonaktif/kedaluwarsa, pemeriksaan URL/aksi, penyaringan data peran dan penolakan revisi/scope usang.
+- [x] Data sesi terisolasi, penugasan per sesi, snapshot terpublikasi dan reset yang mempertahankan master/audit/observasi/penilaian.
+- [x] Route/AppShell existing dipertahankan; area SIMRS Inti memakai navbar berkelompok tanpa sidebar/scroll horizontal dan memakai ulang UI transaksi di praktikum.
+- [x] Typecheck, lint, 32 uji domain/regresi, 2 rangkaian HTTP pada development/build server, build dan browser alur utama serta lima ukuran pendaftaran desktop.
+- [ ] Database/persistensi permanen, password/SSO/manajemen akun penuh dan kolaborasi praktikum lintas browser/perangkat.
+- [ ] CRUD semua katalog, penyunting snapshot kompleks, upload lampiran, template cetak lengkap, kapasitas appointment dan monitor real time.
+- [ ] Fitur akademik/kuis penuh dan modul operasional fase berikutnya mengikuti pekerjaan terpisah serta spesifikasi yang disepakati.
+
+Laporan terperinci, hasil pengujian, batas verifikasi dan pekerjaan lanjutan: `Reports/simrs-inti-integrasi.md` di akar repository.

@@ -1,10 +1,9 @@
 "use client"
 import { useState } from "react"
+import { CoreArea } from "./core-area"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { FieldGroup } from "@/components/ui/field"
 import {
   Dialog,
@@ -61,15 +60,19 @@ export function Login() {
         className="login-card"
       >
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault()
-            dispatch({ type: "login", role, participantId: person })
-            router.push(role === "Mahasiswa" ? "/sesi-aktif" : "/")
+            if (
+              await dispatch({ type: "login", role, participantId: person })
+            ) {
+              router.push(role === "Mahasiswa" ? "/sesi-aktif" : "/")
+              router.refresh()
+            }
           }}
         >
           <Notice title="Akses demo Fase 1">
-            Gunakan akun contoh tanpa kata sandi. Seluruh data fiktif dan hanya
-            tersimpan selama halaman ini terbuka.
+            Gunakan akun contoh tanpa kata sandi. Sesi akun diperiksa server.
+            Data fiktif tersimpan sementara selama server demo berjalan.
           </Notice>
           <FieldGroup>
             <FormField id="login-role" label="Peran akun demo">
@@ -128,137 +131,7 @@ export function Login() {
   )
 }
 export function MasterData() {
-  const { state, dispatch } = useDemo()
-  const [category, setCategory] = useState("Unit & poli")
-  const [create, setCreate] = useState(false)
-  const [name, setName] = useState("")
-  const [detail, setDetail] = useState("")
-  const [message, setMessage] = useState("")
-  return (
-    <div className="page-stack">
-      <PageHeading
-        title="Master data rumah sakit"
-        description="Siapkan data dasar yang konsisten untuk setiap skenario pembelajaran."
-        action={
-          <Button onClick={() => setCreate(true)}>Tambah unit simulasi</Button>
-        }
-      />
-      {message && <Notice title={message} />}
-      <div className="workspace-grid">
-        <Panel
-          title="Data rumah sakit simulasi"
-          description="Unit, petugas, layanan, dan tarif sintetis untuk Fase 1."
-        >
-          <DataTable
-            rows={state.master.filter((row) => row.category === category)}
-            search={(row) => `${row.id} ${row.name} ${row.detail}`}
-            placeholder="Cari kode atau nama data..."
-            filters={
-              <SelectControl
-                label="Kategori master data"
-                options={[...new Set(state.master.map((row) => row.category))]}
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-              />
-            }
-            columns={[
-              { label: "Kode", render: (row) => row.id },
-              { label: "Nama", render: (row) => <strong>{row.name}</strong> },
-              { label: "Keterangan", render: (row) => row.detail },
-              {
-                label: "Status",
-                render: (row) => <Status>{row.status}</Status>,
-              },
-            ]}
-          />
-        </Panel>
-        <div className="page-stack">
-          <Panel title={academic.hospital}>
-            <dl className="summary-list">
-              <div>
-                <dt>Jenis data</dt>
-                <dd>Master data sintetis</dd>
-              </div>
-              <div>
-                <dt>Jumlah data</dt>
-                <dd>{state.master.length} entri</dd>
-              </div>
-              <div>
-                <dt>Hak pengelolaan</dt>
-                <dd>Administrator</dd>
-              </div>
-            </dl>
-          </Panel>
-          <Notice title="Dasar setiap praktikum">
-            Master data tidak ikut terhapus ketika dosen mengulang percobaan.
-            Form demo ini mendukung penambahan unit; kategori lainnya tersedia
-            untuk dibaca.
-          </Notice>
-        </div>
-      </div>
-      <Dialog open={create} onOpenChange={setCreate}>
-        <DialogContent className="simrs-ui">
-          <DialogHeader>
-            <DialogTitle>Tambah unit simulasi</DialogTitle>
-            <DialogDescription>
-              Unit baru ditambahkan ke master demo dan dicatat pada audit.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (!name.trim()) return
-              dispatch({
-                type: "master",
-                row: {
-                  id: `UNIT-${Date.now()}`,
-                  name,
-                  detail,
-                  category: "Unit & poli",
-                  status: "Aktif",
-                },
-              })
-              setName("")
-              setDetail("")
-              setCategory("Unit & poli")
-              setCreate(false)
-              setMessage("Unit simulasi berhasil ditambahkan.")
-            }}
-          >
-            <FieldGroup>
-              <FormField id="unit-name" label="Nama unit sintetis" required>
-                <Input
-                  id="unit-name"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </FormField>
-              <FormField id="unit-detail" label="Keterangan">
-                <Textarea
-                  id="unit-detail"
-                  value={detail}
-                  onChange={(e) => setDetail(e.target.value)}
-                />
-              </FormField>
-            </FieldGroup>
-            <div className="form-actions">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreate(false)}
-              >
-                Batal
-              </Button>
-              <Button type="submit" disabled={!name.trim()}>
-                Simpan unit
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
+  return <CoreArea module="master" />
 }
 export function LearningMaterials() {
   const [selected, setSelected] = useState<(typeof materials)[number] | null>(
@@ -393,7 +266,8 @@ export function AcademicPage({ users = false }: { users?: boolean }) {
       {users && (
         <Notice title="Pengelolaan akun demo">
           Akun dan keanggotaan tersedia untuk pratinjau. Pembuatan akun,
-          perubahan hak akses, dan autentikasi permanen menunggu backend.
+          perubahan hak akses, dan autentikasi permanen belum tersedia. Sesi
+          akun demo dan izin tindakan sudah diperiksa oleh server.
         </Notice>
       )}
     </div>
@@ -425,8 +299,9 @@ export function HelpPage({ settings = false }: { settings?: boolean }) {
               <p>
                 Dalam demo ini, pilih akun melalui menu profil. Setiap akun
                 mahasiswa memiliki tugas pelayanan tersendiri. Perubahan tetap
-                tersedia selama berpindah halaman dan kembali ke data awal saat
-                browser dimuat ulang.
+                tersedia saat berpindah halaman dan memuat ulang browser.
+                Lingkungan demo berakhir setelah 8 jam atau saat server dimulai
+                ulang. Data setiap sesi praktikum disimpan terpisah.
               </p>
               <ActionLink href="/login">Pilih akun demo</ActionLink>
             </div>
