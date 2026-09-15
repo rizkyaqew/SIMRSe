@@ -1,6 +1,9 @@
 "use client"
 import { canReadCore } from "@/lib/platform/core-access"
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { CoreTestingGuide } from "./core-testing-guide"
+import { CoreInputAccess } from "./core-input-access"
 import { CoreWorkspace } from "@/components/core/workspace"
 import { EmptyState, Notice, PageHeading } from "@/components/platform/shared"
 import { coreModules, type CoreModule } from "@/lib/core/navigation"
@@ -18,6 +21,12 @@ export function CoreArea({
   embedded?: boolean
 }) {
   const { state, dispatch, pending } = useDemo()
+  const query = useSearchParams()
+  const selection = {
+    visit: query.get("visit") ?? undefined,
+    patient: query.get("patient") ?? undefined,
+    appointment: query.get("appointment") ?? undefined,
+  }
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -57,16 +66,38 @@ export function CoreArea({
                 : `SIMRS Inti · ${state.activeSessionId} · Percobaan ${state.attempt.number} · DATA SINTETIS`
             }
           />
-          {locked && <Notice title={locked} />}
+          <CoreInputAccess module={module} locked={locked} />
         </>
       )}
+      {master && (
+        <Notice title="Master menjadi dasar skenario berikutnya">
+          Perubahan digunakan saat skenario baru dipublikasikan. Skenario
+          terpublikasi dan sesi yang sudah dibuat tetap memakai data awalnya;
+          reset tidak mengambil perubahan master terbaru.
+        </Notice>
+      )}
       <CoreWorkspace
-        key={`${module}-${state.activeSessionId}-${state.attempt.number}-${state.participantId}`}
+        key={`${module}-${state.role}-${state.activeSessionId}-${state.attempt.number}-${state.participantId}-${query.toString()}`}
         module={module}
         data={data}
         principal={corePrincipal(state)}
         locked={locked}
         pending={pending}
+        selection={selection}
+        activity={state.audit.filter(
+          (a) =>
+            a.session === state.activeSessionId &&
+            a.attempt === state.attempt.number
+        )}
+        linkTo={(section, target = {}) => {
+          if (!canReadCore(state.role, participant(state).actor, section))
+            return undefined
+          const params = new URLSearchParams()
+          Object.entries(target).forEach(([key, value]) => {
+            if (value) params.set(key, value)
+          })
+          return `/simrs/${section === "ringkasan" ? "" : section}${params.size ? `?${params}` : ""}`
+        }}
         execute={(command) =>
           dispatch({
             type: "core",
@@ -76,6 +107,10 @@ export function CoreArea({
           })
         }
       />
+      {!embedded &&
+        (module === "ringkasan" ||
+          module === "laporan" ||
+          module === "master") && <CoreTestingGuide />}
     </div>
   )
 }

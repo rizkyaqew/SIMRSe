@@ -1,6 +1,7 @@
 "use client"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { safeCoreDestination } from "@/lib/simrs/core-entry"
 import { Add01Icon, PlayIcon } from "@hugeicons/core-free-icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -346,10 +347,16 @@ export function Sessions({ monitor = false }: { monitor?: boolean }) {
 export function Briefing({ tasksOnly = false }: { tasksOnly?: boolean }) {
   const { state, dispatch } = useDemo()
   const router = useRouter()
+  const query = useSearchParams()
   const person = participant(state)
   const session = state.sessions[0]
   const scenario = state.scenarios.find((s) => s.id === session.scenarioId)!
   const started = state.attempt.status !== "Belum dimulai"
+  const destination = safeCoreDestination(
+    query.get("lanjut"),
+    state.role,
+    person.actor
+  )
   return (
     <div className="page-stack">
       <PageHeading
@@ -413,7 +420,7 @@ export function Briefing({ tasksOnly = false }: { tasksOnly?: boolean }) {
                   }
                   onClick={async () => {
                     if (!started && !(await dispatch({ type: "start" }))) return
-                    router.push("/simulasi")
+                    router.push(destination ?? "/simulasi")
                   }}
                 >
                   <Icon icon={PlayIcon} />

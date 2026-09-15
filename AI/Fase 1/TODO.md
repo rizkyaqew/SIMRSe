@@ -102,3 +102,27 @@ Cakupan: aplikasi demo dengan server Next.js yang sama dan data sementara, bukan
 - [ ] Fitur akademik/kuis penuh dan modul operasional fase berikutnya mengikuti pekerjaan terpisah serta spesifikasi yang disepakati.
 
 Laporan terperinci, hasil pengujian, batas verifikasi dan pekerjaan lanjutan: `Reports/simrs-inti-integrasi.md` di akar repository.
+
+# Progres Form SIMRS Inti dan Penelusuran — 15 September 2026
+
+Cakupan: melengkapi input dan keterlacakan pada alur demo existing. Bukan penyelesaian seluruh transaksi operasional rumah sakit.
+
+- [x] Form tambah/ubah seluruh kategori katalog master dasar, identitas rumah sakit, status dan alasan; poli/penjamin/diagnosis/layanan/tindakan tersambung ke pilihan transaksi pada snapshot baru.
+- [x] Koreksi identitas pasien beralasan dengan RM tetap, audit dan penguncian identitas terkait dokumen final; contoh pasien baru memakai kode yang belum terdaftar.
+- [x] Tautan pasien → appointment/pendaftaran dan appointment → pendaftaran membawa pilihan terkait, tanpa mengubah verifikasi, nomor antrean atau transisi status existing.
+- [x] Sinkronisasi input tanggal/waktu native dan tombol submit appointment; formulir menunggu penyimpanan server sebelum menampilkan sukses.
+- [x] Penelusuran per kunjungan, aktivitas sesuai izin, tautan antarform, unduhan hasil berpenanda DOKUMEN SIMULASI dan panduan pengujian berganti akun sesuai penugasan aktif.
+- [x] Rincian hasil input dapat dibaca di aplikasi; 38 test domain/regresi, 3 rangkaian HTTP, typecheck/lint/build dan browser lintas peran lulus. Navbar/dialog diperiksa pada lebar 1280 dan 1024 piksel.
+- [ ] Penyimpanan berkas unduhan melalui browser bawaan belum terverifikasi. Isi dokumen dan preview di aplikasi sudah diuji.
+- [ ] Relasi/operasi master lanjutan: kapasitas dan penjadwalan SDM, alokasi bed, stok/pengadaan. Kategori tersebut saat ini diisi sebagai referensi nama/rincian/status.
+- [ ] Persistensi permanen, autentikasi produksi, upload lampiran dan kolaborasi lintas perangkat tetap belum dikerjakan.
+
+Hasil pengujian serta cakupan verifikasi: `Reports/simrs-inti-form-dan-penelusuran.md`.
+
+# Perbaikan Akses Input — 15 September 2026
+
+- [x] Form mode baca menyediakan jalur ke akun penginput sesuai penugasan, melalui login dan briefing kembali ke form tujuan.
+- [x] Pergantian akun antar-tab menyegarkan identitas/navigasi/guard tanpa menambah hak akses Dosen atau membuka transaksi terkunci.
+- [x] Browser membuktikan input dan penyimpanan pendaftaran aktif serta akun dua tab tersinkron. Typecheck/lint/build, 41 test domain/regresi dan 3 rangkaian HTTP lulus.
+
+Rincian penyebab dan pengujian: `Reports/perbaikan-akses-input-simrs-inti.md`.

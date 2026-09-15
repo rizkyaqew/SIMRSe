@@ -110,6 +110,20 @@ export const hospitalMaster: HospitalMaster = {
   rows: [
     ...masterData,
     {
+      id: "POLI-001",
+      name: "Poli Umum",
+      category: "Poli",
+      detail: "Tujuan pelayanan rawat jalan",
+      status: "Aktif",
+    },
+    {
+      id: "DX-DEMO-02",
+      name: "Diagnosis contoh B",
+      category: "Diagnosis",
+      detail: "Kode diagnosis sintetis",
+      status: "Aktif",
+    },
+    {
       id: "DX-DEMO-01",
       name: "Diagnosis contoh A",
       category: "Diagnosis",
@@ -147,6 +161,25 @@ export const hospitalMaster: HospitalMaster = {
       active: true,
     },
   ],
+}
+/** Generate a fresh example without inserting or auto-submitting any transaction. */
+export function nextPatientExample(state: CoreState) {
+  let n = 1
+  while (
+    state.patients.some(
+      (p) => p.identity === `SINT-${String(n).padStart(4, "0")}`
+    )
+  )
+    n++
+  const code = String(n).padStart(4, "0")
+  return {
+    ...patientSeed,
+    identity: `SINT-${code}`,
+    name: `Pasien Sintetis ${code}`,
+    contact: `KONTAK-SINT-${code}`,
+    unit: state.master.units[0] ?? "",
+    payer: state.master.payers[0] ?? "",
+  }
 }
 export const tariffs = hospitalMaster.services.filter(
   (s) => s.kind !== "procedure"

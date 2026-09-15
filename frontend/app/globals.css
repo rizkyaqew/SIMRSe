@@ -1322,3 +1322,9 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Operational journey wraps vertically so it remains readable in dialogs and at 1024px. */
+.simrs-ui .visit-journey { display: grid; gap: 20px; padding: 0; list-style: none; }
+.simrs-ui .visit-journey > li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.simrs-ui .journey-number { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--muted); color: var(--primary); font-weight: 600; }
+.simrs-ui .visit-journey p { margin-block: 7px 10px; color: var(--muted-foreground); }

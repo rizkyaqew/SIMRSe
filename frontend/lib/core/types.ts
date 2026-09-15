@@ -6,6 +6,28 @@ export interface MasterRow {
   detail: string
   status: string
 }
+export const masterCategories = [
+  "Unit & poli",
+  "Poli",
+  "SDM & jadwal",
+  "Layanan & tarif",
+  "Penjamin",
+  "Obat & bahan",
+  "Ruangan",
+  "Tempat tidur",
+  "Supplier",
+  "Diagnosis",
+  "Tindakan",
+] as const
+export type MasterCategory = (typeof masterCategories)[number]
+export interface MasterInput {
+  id?: string
+  category: MasterCategory
+  name: string
+  detail: string
+  status: "Aktif" | "Nonaktif"
+  amount?: number
+}
 export interface Service {
   id: string
   name: string
@@ -35,6 +57,7 @@ export interface Patient extends Omit<PatientInput, "unit"> {
   id: string
   rm: string
   createdAt: string
+  updatedAt?: string
 }
 export type QueueStatus =
   | "Menunggu"
@@ -117,6 +140,14 @@ export interface CoreState {
 }
 export type CoreCommand =
   | { type: "patient.create"; patient: PatientInput }
+  | {
+      type: "patient.update"
+      id: string
+      patient: PatientInput
+      reason: string
+    }
+  | { type: "master.save"; data: MasterInput; reason: string }
+  | { type: "master.hospital"; name: string; reason: string }
   | {
       type: "registration.create"
       patient?: PatientInput

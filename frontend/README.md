@@ -35,7 +35,7 @@ npm run test:integration
 npm run build
 ```
 
-`npm test` menjalankan 32 test domain/regresi. `test:integration` menjalankan dua rangkaian HTTP dan membutuhkan server pada port 3000. Untuk server pada port berbeda:
+`npm test` menjalankan 41 test domain/regresi. `test:integration` menjalankan tiga rangkaian HTTP dan membutuhkan server pada port 3000. Untuk server pada port berbeda:
 
 ```powershell
 $env:SIMRS_TEST_URL = 'http://localhost:3001'
@@ -55,6 +55,20 @@ Test memakai data sintetis dan lingkungan terpisah, tanpa membaca cookie browser
 - `components/simrs`: AppShell navbar dan UI pembelajaran existing. `components/platform` memakai ulang primitive existing; `components/ui` tetap shadcn.
 - Route `/[module]` lama tetap tersedia. `/simrs` dan `/simrs/[section]` merupakan tambahan, bukan migrasi route massal.
 
-Tidak ada database, migration, integrasi produksi atau pembayaran nyata. Akademik, materi/kuis, konfigurasi dan sebagian master masih mengikuti cakupan demo existing. Farmasi/laboratorium tetap observasi tanpa engine tahap lanjut. Lampiran rekam medis berupa keterangan teks, belum upload berkas. Appointment sederhana, tanpa kapasitas/jadwal kompleks. Penyimpanan permanen dan kolaborasi banyak perangkat belum tersedia.
+Tidak ada database, migration, integrasi produksi atau pembayaran nyata. Akademik, materi/kuis dan konfigurasi masih mengikuti cakupan demo existing. Master memiliki form tambah/ubah seluruh kategori dasar; SDM/jadwal, ruang/bed, obat/bahan dan supplier masih berupa katalog referensi, belum transaksi kapasitas/stok. Farmasi/laboratorium tetap observasi tanpa engine tahap lanjut. Lampiran rekam medis berupa keterangan teks, belum upload berkas. Appointment sederhana, tanpa kapasitas/jadwal kompleks. Penyimpanan permanen dan kolaborasi banyak perangkat belum tersedia.
+
+## Mengisi form dan melihat hasil terintegrasi
+
+Jika form tidak dapat diisi, periksa akun di header. Dosen hanya mengamati. Pilih **Gunakan akun penginput** pada form atau **Isi pendaftaran** di dashboard inti; halaman masuk memilihkan akun yang sesuai. Setelah masuk, baca/lanjutkan briefing untuk kembali ke form tersebut. Login/logout pada satu tab juga memperbarui akun di tab lain. Submit, dokumen final dan sesi berakhir tetap terkunci sesuai alur.
+
+- **Master:** masuk Administrator → Master data → Tambah data master / Ubah data. Kategori Poli, Penjamin, Diagnosis, Layanan & tarif, Tindakan memperbarui pilihan operasional. Isi alasan setiap perubahan. Untuk mencoba master baru, Dosen mempublikasikan skenario baru → membuat sesi → memilih sesi itu → membuka sesi. Reset sesi lama tetap memakai snapshot lama.
+- **Pasien:** sebagai petugas pendaftaran, mulai/lanjutkan melalui briefing → SIMRS Inti → Layanan pasien → Data pasien. Isi data atau gunakan contoh lalu sesuaikan. Koreksi identitas membutuhkan alasan, mempertahankan RM dan terkunci setelah ada rekam medis final.
+- **Appointment:** dari baris pasien pilih Buat appointment → isi tanggal/jam/poli → Simpan appointment → Daftarkan kunjungan. Pasien dan appointment otomatis dipilih pada pendaftaran; centang verifikasi dan simpan.
+- **Datang langsung:** dari pasien pilih Daftarkan kunjungan, atau isi Pasien baru di Pendaftaran. Nomor RM, kunjungan dan antrean tampil setelah penyimpanan sukses.
+- **Pelayanan:** Panggil antrean. Ganti akun Demo 02 untuk verifikasi/draft administrasi jika diperlukan, lalu Demo 03 untuk Mulai pelayanan → isi keluhan, pemeriksaan, diagnosis, tindakan, catatan, hasil, tindak lanjut dan rujukan → Simpan → Finalisasi → Selesaikan pelayanan. Isi sesuai skenario, tanpa rekomendasi otomatis.
+- **Kasir:** ganti Demo 06 pada browser yang sama, pilih kunjungan yang sama, periksa tagihan layanan/tindakan, lalu catat pembayaran dummy dengan alasan. Rp65.000 untuk layanan dasar; Rp90.000 jika tindakan contoh Rp25.000 ikut dicatat. Selalu gunakan nominal pada tagihan aktual.
+- **Hasil:** pilih Telusuri alur di transaksi, atau Dashboard/Laporan operasional → Penelusuran alur pelayanan → pilih kunjungan → Lihat rincian hasil input. Status, aktivitas dan rincian mengikuti transaksi serta hak akses. Dosen melihat lintas peran; mahasiswa hanya melihat audit miliknya. Unduhan berkas tersedia dengan isi yang sama, tetapi penyimpanan unduhan melalui browser bawaan belum terverifikasi.
+
+Panduan langkah dan penugasan aktif juga tersedia langsung di dashboard/master/laporan SIMRS Inti. Pengujian dan batasan iterasi: [`../Reports/simrs-inti-form-dan-penelusuran.md`](../Reports/simrs-inti-form-dan-penelusuran.md).
 
 Laporan arsitektur, API, hasil pengujian dan batasan: [`../Reports/simrs-inti-integrasi.md`](../Reports/simrs-inti-integrasi.md). Dokumen produk berada di `../AI/Fase 1/`.

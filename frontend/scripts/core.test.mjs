@@ -8,6 +8,11 @@ const { createCoreState, patientSeed } = await loadModule("core/catalog")
 const { initialState, transition } = await loadModule("simrs/store")
 const { DemoServer } = await loadModule("server/runtime")
 const { accounts } = await loadModule("platform/accounts")
+const { masterCategories } = await loadModule("core/types")
+const { visitJourney, journeyText } = await loadModule("core/journey")
+const { nextPatientExample } = await loadModule("core/catalog")
+const { coreInputEntry, safeCoreDestination } =
+  await loadModule("simrs/core-entry")
 const now = Date.now(),
   registrar = {
     id: "REG",
@@ -85,6 +90,95 @@ const payment = (state, kind, amount) =>
     },
     cashier
   )
+test("input recovery selects the assigned active account without giving teachers write access", () => {
+  const state = structuredClone(initialState)
+  const entry = coreInputEntry(state, "pendaftaran")
+  assert.equal(entry.canWrite, false)
+  assert.equal(entry.account.id, "MHS-DEMO-01")
+  assert.equal(
+    new URL(entry.loginPath, "http://localhost").searchParams.get("lanjut"),
+    "/simrs/pendaftaran"
+  )
+  state.participants[0].actor = "Dokter"
+  state.participants[1].actor = "Petugas Pendaftaran"
+  assert.equal(coreInputEntry(state, "pendaftaran").account.id, "MHS-DEMO-02")
+  state.participants.unshift({ ...state.participants[1], id: "MHS-DEMO-07" })
+  assert.equal(coreInputEntry(state, "pendaftaran").account.id, "MHS-DEMO-02")
+  assert.equal(coreInputEntry(state, "master").account.id, "ADMIN-DEMO")
+})
+test("return destination rejects external URLs, unknown routes and unauthorized modules", () => {
+  for (const path of [
+    "https://example.com",
+    "//example.com",
+    "javascript:alert(1)",
+    "/simrs/unknown",
+    "/simrs/pendaftaran?next=https://example.com",
+    "/simrs/../pengguna",
+  ])
+    assert.equal(safeCoreDestination(path, "Dosen"), null)
+  assert.equal(safeCoreDestination("/simrs/kasir", "Mahasiswa", "Dokter"), null)
+  assert.equal(
+    safeCoreDestination("/simrs/master", "Mahasiswa", "Petugas Pendaftaran"),
+    null
+  )
+  assert.equal(
+    safeCoreDestination(
+      "/simrs/pendaftaran",
+      "Mahasiswa",
+      "Petugas Pendaftaran"
+    ),
+    "/simrs/pendaftaran"
+  )
+  assert.equal(
+    safeCoreDestination("/simrs/master", "Administrator"),
+    "/simrs/master"
+  )
+})
+test("input navigation retains briefing, locked submissions and existing transactions", () => {
+  let state = structuredClone(initialState)
+  const masterBefore = structuredClone(state.hospitalMaster)
+  state = transition(
+    state,
+    { type: "reset", reason: "Uji akses input" },
+    now,
+    true
+  )
+  state = transition(
+    state,
+    { type: "login", role: "Mahasiswa", participantId: "MHS-DEMO-01" },
+    now,
+    true
+  )
+  const entry = coreInputEntry(state, "pendaftaran")
+  assert.equal(entry.canWrite, true)
+  assert.equal(entry.briefingPath, "/sesi-aktif?lanjut=%2Fsimrs%2Fpendaftaran")
+  assert.throws(
+    () =>
+      transition(
+        state,
+        {
+          type: "core",
+          command: { type: "patient.create", patient: patientSeed },
+          sessionId: state.activeSessionId,
+          attemptNumber: state.attempt.number,
+        },
+        now,
+        true
+      ),
+    /briefing/
+  )
+  state = transition(state, { type: "start" }, now, true)
+  state = transition(state, { type: "visit", visit: patientSeed }, now, true)
+  const visitsBefore = structuredClone(state.attempt.core.visits)
+  state = transition(
+    state,
+    { type: "login", role: "Dosen", participantId: "MHS-DEMO-01" },
+    now,
+    true
+  )
+  assert.deepEqual(state.attempt.core.visits, visitsBefore)
+  assert.deepEqual(state.hospitalMaster, masterBefore)
+})
 test("core has no academic/store dependency or education fields", async () => {
   for (const file of await readdir(new URL("../lib/core/", import.meta.url))) {
     const source = await readFile(
@@ -98,6 +192,226 @@ test("core has no academic/store dependency or education fields", async () => {
   }
   const visit = register().visits[0]
   assert.equal("attempt" in visit, false)
+})
+test("all master categories accept input with stable IDs and audit facts", () => {
+  let state = createCoreState()
+  for (const category of masterCategories) {
+    const result = executeCore(
+      state,
+      {
+        type: "master.save",
+        data: {
+          category,
+          name: `${category} Sintetis Uji`,
+          detail: "Rincian input sintetis",
+          status: "Aktif",
+          amount: 30000,
+        },
+        reason: "Persiapan data uji",
+      },
+      admin,
+      now
+    )
+    state = result.state
+    const row = state.master.rows.at(-1)
+    assert.equal(result.fact.object, row.id)
+    assert.equal(result.fact.action, "Master ditambahkan")
+    state = run(
+      state,
+      {
+        type: "master.save",
+        data: { ...row, detail: "Rincian diperbarui", amount: 35000 },
+        reason: "Koreksi data uji",
+      },
+      admin
+    )
+    assert.equal(
+      state.master.rows.find((r) => r.id === row.id).detail,
+      "Rincian diperbarui"
+    )
+    if (category === "Poli") assert.ok(state.master.units.includes(row.name))
+    if (category === "Penjamin")
+      assert.ok(state.master.payers.includes(row.name))
+    if (category === "Diagnosis")
+      assert.ok(state.master.diagnoses.some((d) => d.id === row.id))
+    if (["Layanan & tarif", "Tindakan"].includes(category))
+      assert.equal(
+        state.master.services.find((s) => s.id === row.id).amount,
+        35000
+      )
+  }
+})
+test("master rejects invalid, duplicate, unauthorized and destructive option changes", () => {
+  const state = createCoreState()
+  const command = {
+    type: "master.save",
+    data: {
+      category: "Poli",
+      name: "Poli Umum",
+      detail: "Uji",
+      status: "Aktif",
+    },
+    reason: "Uji",
+  }
+  assert.throws(() => run(state, command, registrar), /diizinkan/)
+  assert.throws(() => run(state, command, admin), /sudah tersedia/)
+  assert.throws(
+    () =>
+      run(state, { ...command, data: { ...command.data, name: "" } }, admin),
+    /formulir/
+  )
+  assert.throws(
+    () =>
+      run(
+        state,
+        {
+          ...command,
+          data: { ...command.data, id: "POLI-001", status: "Nonaktif" },
+        },
+        admin
+      ),
+    /Minimal satu/
+  )
+  assert.throws(
+    () =>
+      run(
+        state,
+        {
+          ...command,
+          data: {
+            ...state.master.rows.find((r) => r.id === "LAY-001"),
+            status: "Nonaktif",
+            amount: 15000,
+          },
+        },
+        admin
+      ),
+    /harus tetap aktif/
+  )
+  assert.throws(
+    () =>
+      run(
+        state,
+        {
+          ...command,
+          data: { ...command.data, name: "Poli Lain" },
+          reason: "",
+        },
+        admin
+      ),
+    /Alasan/
+  )
+})
+test("inactive operational master options disappear without deleting catalog history", () => {
+  let state = createCoreState()
+  state = run(
+    state,
+    {
+      type: "master.save",
+      data: {
+        category: "Poli",
+        name: "Poli Sintetis Tambahan",
+        detail: "Uji",
+        status: "Aktif",
+      },
+      reason: "Uji",
+    },
+    admin
+  )
+  const row = state.master.rows.at(-1)
+  state = run(
+    state,
+    {
+      type: "master.save",
+      data: { ...row, status: "Nonaktif" },
+      reason: "Tutup pilihan",
+    },
+    admin
+  )
+  assert.equal(
+    state.master.rows.find((r) => r.id === row.id).status,
+    "Nonaktif"
+  )
+  assert.equal(state.master.units.includes(row.name), false)
+})
+test("patient correction preserves RM, appointments, visits and payer snapshots", () => {
+  let state = register()
+  const patient = state.patients[0],
+    visit = structuredClone(state.visits[0])
+  state = run(state, {
+    type: "appointment.create",
+    patientId: patient.id,
+    unit: "Poli Umum",
+    date: "2026-10-02",
+    time: "10:30",
+  })
+  const result = executeCore(
+    state,
+    {
+      type: "patient.update",
+      id: patient.id,
+      patient: {
+        ...patientSeed,
+        name: "Pasien Sintetis Dikoreksi",
+        payer: "JKN Simulasi",
+        contact: "KONTAK-SINT-0001",
+      },
+      reason: "Perbaikan input",
+    },
+    registrar,
+    now
+  )
+  assert.equal(result.state.patients[0].rm, patient.rm)
+  assert.deepEqual(result.state.visits[0], visit)
+  assert.equal(result.state.appointments[0].patientId, patient.id)
+  assert.match(result.fact.before, /Pasien Sintetis 001/)
+  assert.match(result.fact.after, /Dikoreksi/)
+  assert.throws(
+    () =>
+      run(served(), {
+        type: "patient.update",
+        id: patient.id,
+        patient: patientSeed,
+        reason: "Uji terkunci",
+      }),
+    /final terkunci/
+  )
+})
+test("repeat testing generates unused patient examples without inserting data", () => {
+  const state = register()
+  const sample = nextPatientExample(state)
+  assert.equal(sample.identity, "SINT-0002")
+  assert.equal(state.patients.length, 1)
+  assert.equal(sample.unit, state.master.units[0])
+})
+test("journey reflects actual transitions, cancellation, payment and allowed exports", () => {
+  const registered = register().visits[0]
+  assert.equal(visitJourney(registered, registrar)[1].status, "Menunggu")
+  assert.equal(visitJourney(registered, registrar)[5].status, "Sesuai akses")
+  let state = served()
+  state = payment(state, "Pembayaran", 90000)
+  const viewer = { ...doctor, capabilities: ["record.read", "billing.read"] }
+  assert.equal(visitJourney(state.visits[0], viewer)[5].status, "Lunas")
+  assert.match(journeyText(state, state.visits[0], viewer), /90000|90.000/)
+  const restricted = journeyText(state, state.visits[0], registrar)
+  assert.doesNotMatch(
+    restricted,
+    /Catatan pelayanan sintetis|90000|90.000|RIWAYAT PEMBAYARAN/
+  )
+  const cancelled = run(register(), {
+    type: "queue.transition",
+    id: "KJ-001",
+    status: "Tidak datang",
+    reason: "Tidak hadir",
+  })
+  assert.equal(
+    visitJourney(cancelled.visits[0], viewer)[2].status,
+    "Dihentikan"
+  )
+  assert.match(
+    journeyText(cancelled, cancelled.visits[0], viewer),
+    /Tidak hadir/
+  )
 })
 test("canonical synthetic patient can have successive visits under one RM", () => {
   let state = served()

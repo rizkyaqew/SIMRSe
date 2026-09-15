@@ -22,7 +22,10 @@ import {
   Status,
   useUnsavedChanges,
 } from "@/components/platform/shared"
-import { patientSeed } from "@/lib/core/catalog"
+import { nextPatientExample } from "@/lib/core/catalog"
+import { MasterWorkspace } from "./master-workspace"
+import { JourneyButton, JourneyExplorer } from "./visit-journey"
+import { ActionLink } from "@/components/platform/shared"
 import { billSummary, operationalSummary } from "@/lib/core/engine"
 import { validatePatient, validateRecord } from "@/lib/core/validation"
 import type {
@@ -32,6 +35,7 @@ import type {
   RecordInput,
   Visit,
   Payment,
+  Patient,
 } from "@/lib/core/types"
 import type { Capability, Principal } from "@/lib/platform/types"
 import type { CoreModule } from "@/lib/core/navigation"
@@ -43,6 +47,18 @@ export interface WorkspaceProps {
   execute: (command: CoreCommand) => Promise<boolean>
   locked: string
   pending: boolean
+  selection?: { visit?: string; patient?: string; appointment?: string }
+  linkTo?: (
+    module: CoreModule,
+    selection?: { visit?: string; patient?: string; appointment?: string }
+  ) => string | undefined
+  activity?: {
+    id: string
+    time: string
+    user: string
+    action: string
+    object: string
+  }[]
 }
 const allowed = (props: WorkspaceProps, cap: Capability) =>
   !props.locked &&
@@ -66,6 +82,16 @@ function Saved({ text }: { text: string }) {
 
 /** These screens know hospital facts/capabilities only. Context and pedagogy are supplied outside. */
 export function CoreWorkspace(props: WorkspaceProps & { module: CoreModule }) {
+  if (
+    props.selection?.visit &&
+    !props.data.visits.some((v) => v.id === props.selection?.visit)
+  )
+    return (
+      <EmptyState
+        title="Kunjungan tidak ditemukan"
+        description="Kunjungan tidak tersedia pada konteks aktif. Pilih ulang melalui daftar kunjungan."
+      />
+    )
   switch (props.module) {
     case "pasien":
       return <Patients {...props} />
@@ -82,7 +108,7 @@ export function CoreWorkspace(props: WorkspaceProps & { module: CoreModule }) {
     case "kasir":
       return <Finance {...props} cashier={props.module === "kasir"} />
     case "master":
-      return <Master {...props} />
+      return <MasterWorkspace {...props} />
     case "laporan":
       return <OperationalReport {...props} />
     default:
@@ -126,6 +152,12 @@ function PatientFields({
             aria-invalid={!!errors[key]}
             aria-describedby={errors[key] ? `patient-${key}-error` : undefined}
             onChange={(e) => update(key, e.target.value)}
+            // Native date pickers may emit input before their change/blur event.
+            onInput={
+              type === "date"
+                ? (e) => update(key, e.currentTarget.value)
+                : undefined
+            }
             onBlur={() => blur(key)}
             placeholder={
               key === "identity"
@@ -176,15 +208,43 @@ function PatientFields({
   )
 }
 function Registration(
-  props: WorkspaceProps & { patientOnly?: boolean; onDone?: () => void }
+  props: WorkspaceProps & {
+    patientOnly?: boolean
+    onDone?: () => void
+    editPatient?: Patient
+    onDirtyChange?: (dirty: boolean) => void
+  }
 ) {
   const { data, execute } = props
-  const [mode, setMode] = useState("baru"),
-    [form, setForm] = useState<PatientInput>(emptyPatient),
-    [patientId, setPatientId] = useState(""),
-    [appointmentId, setAppointmentId] = useState("")
+  const initialPatient =
+    props.editPatient ??
+    data.patients.find((p) => p.id === props.selection?.patient)
+  const initialAppointment = data.appointments.find(
+    (a) => a.id === props.selection?.appointment
+  )
+  const [mode, setMode] = useState(
+      props.patientOnly
+        ? "baru"
+        : initialAppointment
+          ? "appointment"
+          : initialPatient
+            ? "lama"
+            : "baru"
+    ),
+    [form, setForm] = useState<PatientInput>(
+      initialPatient
+        ? {
+            ...initialPatient,
+            unit: initialAppointment?.unit ?? data.master.units[0] ?? "",
+          }
+        : emptyPatient
+    ),
+    [patientId, setPatientId] = useState(initialPatient?.id ?? ""),
+    [appointmentId, setAppointmentId] = useState(initialAppointment?.id ?? "")
+  const [correctionReason, setCorrectionReason] = useState("")
+  const [savedIdentity, setSavedIdentity] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({}),
-    [dirty, setDirty] = useState(false),
+    [dirty, setLocalDirty] = useState(false),
     [verified, setVerified] = useState(false),
     [message, setMessage] = useState("")
   const [reset, setReset] = useState(false),
@@ -197,10 +257,17 @@ function Registration(
     props.patientOnly ? "patient.write" : "registration.write"
   )
   useUnsavedChanges(dirty)
+  function setDirty(value: boolean) {
+    setLocalDirty(value)
+    props.onDirtyChange?.(value)
+  }
   function update(key: keyof PatientInput, value: string) {
-    setForm({ ...form, [key]: value })
+    setForm((current) => ({ ...current, [key]: value }))
+    setErrors({ ...errors, [key]: "" })
     setDirty(true)
     setMessage("")
+    setSavedIdentity("")
+    setVerified(false)
   }
   function blur(key: string) {
     const error = validatePatient(form, data.master)[key]
@@ -225,21 +292,50 @@ function Registration(
       check.unit = "Pilih poli dan penjamin."
     if (mode === "appointment" && !appointmentId)
       check.appointmentId = "Pilih appointment terjadwal."
+    if (
+      mode === "baru" &&
+      data.patients.some(
+        (p) => p.identity === form.identity && p.id !== props.editPatient?.id
+      )
+    )
+      check.identity =
+        "Identitas sudah terdaftar. Pilih pasien lama atau gunakan identitas sintetis lain."
+    if (props.editPatient && !correctionReason.trim())
+      check.reason = "Isi alasan koreksi identitas."
+    if (
+      !props.patientOnly &&
+      !data.master.services.some(
+        (s) => s.id === serviceId && s.active && s.kind === "consultation"
+      )
+    )
+      check.service = "Pilih layanan aktif."
     setErrors(check)
     if (Object.values(check).some(Boolean)) return
-    const command: CoreCommand = props.patientOnly
-      ? { type: "patient.create", patient: form }
-      : {
-          type: "registration.create",
-          ...(mode === "baru" ? { patient: form } : { patientId }),
-          unit: form.unit,
-          payer: form.payer,
-          verified,
-          serviceId,
-          ...(mode === "appointment" ? { appointmentId } : {}),
+    const command: CoreCommand = props.editPatient
+      ? {
+          type: "patient.update",
+          id: props.editPatient.id,
+          patient: form,
+          reason: correctionReason,
         }
+      : props.patientOnly
+        ? { type: "patient.create", patient: form }
+        : {
+            type: "registration.create",
+            ...(mode === "baru" ? { patient: form } : { patientId }),
+            unit: form.unit,
+            payer: form.payer,
+            verified,
+            serviceId,
+            ...(mode === "appointment" ? { appointmentId } : {}),
+          }
     if (await execute(command)) {
       setDirty(false)
+      setSavedIdentity(
+        mode === "baru"
+          ? form.identity
+          : (data.patients.find((p) => p.id === patientId)?.identity ?? "")
+      )
       setMessage(
         props.patientOnly
           ? "Pasien sintetis tersimpan."
@@ -248,10 +344,95 @@ function Registration(
       props.onDone?.()
     }
   }
+  // A journey link opens the saved registration; creating another visit remains explicit.
+  const savedVisit =
+    !props.patientOnly &&
+    data.visits.find((v) => v.id === props.selection?.visit)
+  if (savedVisit) {
+    const patient = data.patients.find((p) => p.id === savedVisit.patientId)!
+    return (
+      <Panel
+        title={`Pendaftaran tersimpan · ${savedVisit.id}`}
+        description={`${patient.rm} · DATA SINTETIS`}
+        action={<Status>{savedVisit.status}</Status>}
+      >
+        <div className="page-stack">
+          <dl className="detail-grid">
+            <div>
+              <dt>Pasien / identitas</dt>
+              <dd>
+                {patient.name} · {patient.identity}
+              </dd>
+            </div>
+            <div>
+              <dt>Tanggal lahir / jenis kelamin</dt>
+              <dd>
+                {formatDate(patient.birthDate)} · {patient.gender}
+              </dd>
+            </div>
+            <div>
+              <dt>Alamat / kontak sintetis</dt>
+              <dd>
+                {patient.address} · {patient.contact || "Belum dicatat"}
+              </dd>
+            </div>
+            <div>
+              <dt>Poli / penjamin kunjungan</dt>
+              <dd>
+                {savedVisit.unit} · {savedVisit.payer}
+              </dd>
+            </div>
+            <div>
+              <dt>Layanan tujuan</dt>
+              <dd>
+                {
+                  data.master.services.find(
+                    (s) => s.id === savedVisit.serviceId
+                  )?.name
+                }
+              </dd>
+            </div>
+            <div>
+              <dt>Kedatangan / antrean</dt>
+              <dd>
+                {savedVisit.arrival} ·{" "}
+                {savedVisit.appointmentId ?? "Tanpa appointment"} ·{" "}
+                {savedVisit.queue}
+              </dd>
+            </div>
+            <div>
+              <dt>Pendaftaran disimpan</dt>
+              <dd>
+                {formatDate(savedVisit.createdAt)}{" "}
+                {formatTime(savedVisit.createdAt)} WIB
+              </dd>
+            </div>
+          </dl>
+          <div className="row-actions">
+            <JourneyButton {...props} visit={savedVisit} />
+            {canEdit &&
+              props.linkTo?.("pendaftaran", { patient: patient.id }) && (
+                <ActionLink
+                  href={props.linkTo("pendaftaran", { patient: patient.id })!}
+                >
+                  Daftarkan kunjungan baru
+                </ActionLink>
+              )}
+          </div>
+        </div>
+      </Panel>
+    )
+  }
   return (
     <div className="page-stack">
       <Panel
-        title={props.patientOnly ? "Pasien baru" : "Pendaftaran pasien"}
+        title={
+          props.editPatient
+            ? `Koreksi identitas · ${props.editPatient.rm}`
+            : props.patientOnly
+              ? "Pasien baru"
+              : "Pendaftaran pasien"
+        }
         description="Satu identitas pasien dapat digunakan untuk kunjungan berikutnya. Seluruh data sintetis."
       >
         <form onSubmit={save} noValidate className="page-stack">
@@ -280,6 +461,24 @@ function Registration(
             </Tabs>
           )}
           <Saved text={message} />
+          {savedIdentity &&
+            !props.patientOnly &&
+            (() => {
+              const savedPatient = data.patients.find(
+                (p) => p.identity === savedIdentity
+              )
+              const visit = data.visits
+                .filter((v) => v.patientId === savedPatient?.id)
+                .at(-1)
+              return visit ? (
+                <Notice
+                  title={`Tersimpan · ${savedPatient?.rm} · ${visit.id} · ${visit.queue}`}
+                >
+                  <JourneyButton {...props} visit={visit} /> Lanjutkan
+                  pemanggilan pada menu Antrean, lalu serahkan ke dokter.
+                </Notice>
+              ) : null
+            })()}
           {Object.values(errors).some(Boolean) && (
             <Notice danger title="Periksa formulir">
               {Object.values(errors).filter(Boolean).join(" ")}
@@ -287,21 +486,24 @@ function Registration(
           )}
           {mode === "baru" ? (
             <>
-              <div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!canEdit}
-                  onClick={() => {
-                    setForm({ ...patientSeed, contact: "KONTAK-SINT-0001" })
-                    setDirty(true)
-                    setErrors({})
-                    setMessage("")
-                  }}
-                >
-                  Gunakan data pasien contoh
-                </Button>
-              </div>
+              {!props.editPatient && (
+                <div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canEdit}
+                    onClick={() => {
+                      setForm(nextPatientExample(data))
+                      setDirty(true)
+                      setVerified(false)
+                      setErrors({})
+                      setMessage("")
+                    }}
+                  >
+                    Gunakan data pasien contoh
+                  </Button>
+                </div>
+              )}
               <div className="form-grid">
                 <PatientFields
                   form={form}
@@ -431,6 +633,7 @@ function Registration(
                 id="registration-service"
                 label="Layanan tujuan"
                 required
+                error={errors.service}
               >
                 <SelectControl
                   id="registration-service"
@@ -442,12 +645,33 @@ function Registration(
                   disabled={!canEdit}
                   onChange={(e) => {
                     setServiceId(e.target.value)
+                    setVerified(false)
+                    setErrors({ ...errors, service: "" })
                     setDirty(true)
                   }}
                 />
               </FormField>
             )}
           </div>
+          {props.editPatient && (
+            <FormField
+              id="patient-correction-reason"
+              label="Alasan koreksi identitas"
+              required
+              error={errors.reason}
+            >
+              <Textarea
+                id="patient-correction-reason"
+                value={correctionReason}
+                disabled={!canEdit}
+                aria-invalid={!!errors.reason}
+                onChange={(e) => {
+                  setCorrectionReason(e.target.value)
+                  setDirty(true)
+                }}
+              />
+            </FormField>
+          )}
           {!props.patientOnly && (
             <label className="check-line">
               <input
@@ -456,6 +680,7 @@ function Registration(
                 disabled={!canEdit}
                 onChange={(e) => {
                   setVerified(e.target.checked)
+                  setErrors({ ...errors, verified: "" })
                   setDirty(true)
                 }}
               />
@@ -480,7 +705,9 @@ function Registration(
               {props.pending
                 ? "Menyimpan…"
                 : props.patientOnly
-                  ? "Simpan pasien"
+                  ? props.editPatient
+                    ? "Simpan koreksi identitas"
+                    : "Simpan pasien"
                   : "Simpan pendaftaran"}
             </Button>
           </div>
@@ -494,6 +721,9 @@ function Registration(
         description="Isian yang belum disimpan akan dihapus. Pasien dan kunjungan tersimpan tetap tersedia. Tindakan ini tidak dapat membatalkan penyimpanan."
         onConfirm={() => {
           setForm(emptyPatient)
+          setPatientId("")
+          setAppointmentId("")
+          setSavedIdentity("")
           setDirty(false)
           setVerified(false)
           setErrors({})
@@ -507,6 +737,10 @@ function Patients(props: WorkspaceProps) {
   const [create, setCreate] = useState(false),
     [selected, setSelected] = useState("")
   const patient = props.data.patients.find((p) => p.id === selected)
+  const [editing, setEditing] = useState<Patient | null>(null)
+  const [message, setMessage] = useState("")
+  const [dirty, setDirty] = useState(false),
+    [discard, setDiscard] = useState(false)
   return (
     <div className="page-stack">
       <Panel
@@ -516,13 +750,21 @@ function Patients(props: WorkspaceProps) {
           props.principal.capabilities.includes("patient.write") && (
             <Button
               disabled={!!props.locked}
-              onClick={() => setCreate(!create)}
+              onClick={() => {
+                if (dirty) {
+                  setDiscard(true)
+                  return
+                }
+                setEditing(null)
+                setCreate(!create)
+              }}
             >
               {create ? "Tutup formulir" : "Tambah pasien"}
             </Button>
           )
         }
       >
+        {message && <Saved text={message} />}
         <DataTable
           rows={props.data.patients}
           search={(p) => `${p.name} ${p.identity} ${p.rm}`}
@@ -543,17 +785,81 @@ function Patients(props: WorkspaceProps) {
             {
               label: "Aksi",
               render: (p) => (
-                <Button variant="outline" onClick={() => setSelected(p.id)}>
-                  Detail pasien
-                </Button>
+                <div className="row-actions">
+                  <Button variant="outline" onClick={() => setSelected(p.id)}>
+                    Detail pasien
+                  </Button>
+                  {props.principal.capabilities.includes("patient.write") && (
+                    <Button
+                      variant="outline"
+                      disabled={
+                        !allowed(props, "patient.write") ||
+                        props.data.visits.some(
+                          (v) => v.patientId === p.id && v.record.finalized
+                        )
+                      }
+                      onClick={() => {
+                        if (dirty) {
+                          setDiscard(true)
+                          return
+                        }
+                        setEditing(p)
+                        setCreate(false)
+                      }}
+                    >
+                      Koreksi identitas
+                    </Button>
+                  )}
+                  {props.linkTo?.("pendaftaran", { patient: p.id }) && (
+                    <ActionLink
+                      href={props.linkTo("pendaftaran", { patient: p.id })!}
+                    >
+                      Daftarkan kunjungan
+                    </ActionLink>
+                  )}
+                  {props.linkTo?.("appointment", { patient: p.id }) && (
+                    <ActionLink
+                      href={props.linkTo("appointment", { patient: p.id })!}
+                    >
+                      Buat appointment
+                    </ActionLink>
+                  )}
+                </div>
               ),
             },
           ]}
         />
       </Panel>
-      {create && (
-        <Registration {...props} patientOnly onDone={() => setCreate(false)} />
+      {(create || editing) && (
+        <Registration
+          key={editing?.id ?? "new"}
+          {...props}
+          patientOnly
+          editPatient={editing ?? undefined}
+          onDirtyChange={setDirty}
+          onDone={() => {
+            setMessage(
+              editing
+                ? "Koreksi identitas tersimpan dengan alasan; nomor RM tetap sama."
+                : "Pasien tersimpan. Lanjutkan dengan pendaftaran kunjungan atau appointment."
+            )
+            setCreate(false)
+            setEditing(null)
+            setDirty(false)
+          }}
+        />
       )}
+      <Confirm
+        open={discard}
+        onClose={() => setDiscard(false)}
+        title="Tutup formulir pasien?"
+        description="Isian yang belum disimpan akan dibuang. Data pasien tersimpan tetap tersedia."
+        onConfirm={() => {
+          setDirty(false)
+          setCreate(false)
+          setEditing(null)
+        }}
+      />
       <Dialog
         open={!!patient}
         onOpenChange={(open) => {
@@ -569,6 +875,13 @@ function Patients(props: WorkspaceProps) {
             <div>
               <dt>Identitas</dt>
               <dd>{patient?.identity}</dd>
+            </div>
+            <div>
+              <dt>Terakhir tersimpan</dt>
+              <dd>
+                {patient &&
+                  `${formatDate(patient.updatedAt ?? patient.createdAt)} ${formatTime(patient.updatedAt ?? patient.createdAt)} WIB`}
+              </dd>
             </div>
             <div>
               <dt>Alamat fiktif</dt>
@@ -588,13 +901,32 @@ function Patients(props: WorkspaceProps) {
               </dd>
             </div>
           </dl>
+          <div className="page-stack">
+            {props.data.visits
+              .filter((v) => v.patientId === patient?.id)
+              .map((v) => (
+                <div className="row-actions" key={v.id}>
+                  <strong>{v.id}</strong>
+                  <Status>{v.status}</Status>
+                  <JourneyButton {...props} visit={v} />
+                </div>
+              ))}
+          </div>
+          {props.data.visits.some(
+            (v) => v.patientId === patient?.id && v.record.finalized
+          ) && (
+            <Notice title="Identitas terkunci">
+              Pasien terkait rekam medis final. Koreksi identitas tidak tersedia
+              agar riwayat dokumen tetap utuh.
+            </Notice>
+          )}
         </DialogContent>
       </Dialog>
     </div>
   )
 }
 function Appointments(props: WorkspaceProps) {
-  const [patientId, setPatient] = useState(""),
+  const [patientId, setPatient] = useState(props.selection?.patient ?? ""),
     [date, setDate] = useState(""),
     [time, setTime] = useState("08:00"),
     [unit, setUnit] = useState(props.data.master.units[0]),
@@ -632,7 +964,10 @@ function Appointments(props: WorkspaceProps) {
         <form
           className="page-stack"
           noValidate
-          onChange={() => setDirty(true)}
+          onChange={() => {
+            setDirty(true)
+            setMessage("")
+          }}
           onSubmit={async (e) => {
             e.preventDefault()
             const check = validate()
@@ -699,6 +1034,12 @@ function Appointments(props: WorkspaceProps) {
                 required
                 disabled={!canEdit}
                 onChange={(e) => setDate(e.target.value)}
+                onInput={(e) => {
+                  setDate(e.currentTarget.value)
+                  setDirty(true)
+                  setMessage("")
+                  setErrors((current) => ({ ...current, date: "" }))
+                }}
                 onBlur={() => setErrors({ ...errors, date: validate().date })}
               />
             </FormField>
@@ -715,12 +1056,18 @@ function Appointments(props: WorkspaceProps) {
                 required
                 disabled={!canEdit}
                 onChange={(e) => setTime(e.target.value)}
+                onInput={(e) => {
+                  setTime(e.currentTarget.value)
+                  setDirty(true)
+                  setMessage("")
+                  setErrors((current) => ({ ...current, time: "" }))
+                }}
                 onBlur={() => setErrors({ ...errors, time: validate().time })}
               />
             </FormField>
           </div>
           <div className="form-actions">
-            <Button disabled={!canEdit || !patientId || !date}>
+            <Button type="submit" disabled={!canEdit || !patientId || !date}>
               Simpan appointment
             </Button>
           </div>
@@ -748,6 +1095,20 @@ function Appointments(props: WorkspaceProps) {
               label: "Aksi",
               render: (a) => (
                 <div className="row-actions">
+                  {a.status === "Terjadwal" &&
+                    props.linkTo?.("pendaftaran", {
+                      patient: a.patientId,
+                      appointment: a.id,
+                    }) && (
+                      <ActionLink
+                        href={props.linkTo("pendaftaran", {
+                          patient: a.patientId,
+                          appointment: a.id,
+                        })!}
+                      >
+                        Daftarkan kunjungan
+                      </ActionLink>
+                    )}
                   <Button
                     disabled={!canEdit || a.status !== "Terjadwal"}
                     variant="outline"
@@ -854,40 +1215,46 @@ function Queue(props: WorkspaceProps & { readOnly?: boolean }) {
           },
           {
             label: "Aksi",
-            render: (v) =>
-              canEdit && ["Menunggu", "Dipanggil"].includes(v.status) ? (
-                <div className="row-actions">
-                  {v.status === "Menunggu" && (
+            render: (v) => (
+              <div className="page-stack">
+                <JourneyButton {...props} visit={v} />
+                {canEdit && ["Menunggu", "Dipanggil"].includes(v.status) ? (
+                  <div className="row-actions">
+                    {v.status === "Menunggu" && (
+                      <Button
+                        onClick={() =>
+                          void props.execute({
+                            type: "queue.transition",
+                            id: v.id,
+                            status: "Dipanggil",
+                          })
+                        }
+                      >
+                        Panggil
+                      </Button>
+                    )}
                     <Button
+                      variant="outline"
                       onClick={() =>
-                        void props.execute({
-                          type: "queue.transition",
-                          id: v.id,
-                          status: "Dipanggil",
-                        })
+                        setClose({ id: v.id, status: "Dibatalkan" })
                       }
                     >
-                      Panggil
+                      Batalkan
                     </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    onClick={() => setClose({ id: v.id, status: "Dibatalkan" })}
-                  >
-                    Batalkan
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      setClose({ id: v.id, status: "Tidak datang" })
-                    }
-                  >
-                    Tidak datang
-                  </Button>
-                </div>
-              ) : (
-                <small>{v.cancelReason || "Lihat status pelayanan"}</small>
-              ),
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setClose({ id: v.id, status: "Tidak datang" })
+                      }
+                    >
+                      Tidak datang
+                    </Button>
+                  </div>
+                ) : (
+                  <small>{v.cancelReason || "Lihat status pelayanan"}</small>
+                )}
+              </div>
+            ),
           },
         ]}
       />
@@ -907,7 +1274,7 @@ function Queue(props: WorkspaceProps & { readOnly?: boolean }) {
   )
 }
 function Clinical(props: WorkspaceProps) {
-  const [selected, setSelected] = useState("")
+  const [selected, setSelected] = useState(props.selection?.visit ?? "")
   const [dirty, setDirty] = useState(false)
   const visit =
     props.data.visits.find((v) => v.id === selected) ?? props.data.visits[0]
@@ -1005,6 +1372,7 @@ function RecordEditor(
         description={`${visit.id} · ${patient.rm} · ${patient.name}`}
         action={<Status>{visit.status}</Status>}
       >
+        <JourneyButton {...props} visit={visit} />
         <dl className="detail-grid">
           <div>
             <dt>Identitas</dt>
@@ -1278,7 +1646,7 @@ function RecordEditor(
   )
 }
 function Finance(props: WorkspaceProps & { cashier: boolean }) {
-  const [selected, setSelected] = useState(""),
+  const [selected, setSelected] = useState(props.selection?.visit ?? ""),
     [kind, setKind] = useState<Payment["kind"]>("Pembayaran"),
     [amount, setAmount] = useState(""),
     [confirm, setConfirm] = useState<"payment" | "cancel" | null>(null),
@@ -1372,6 +1740,7 @@ function Finance(props: WorkspaceProps & { cashier: boolean }) {
         >
           <div className="page-stack">
             <Saved text={message} />
+            <JourneyButton {...props} visit={visit} />
             <DataTable
               rows={visit.charges}
               search={(c) => c.name}
@@ -1538,294 +1907,6 @@ function Finance(props: WorkspaceProps & { cashier: boolean }) {
     </div>
   )
 }
-function Master(props: WorkspaceProps) {
-  const [category, setCategory] = useState("Semua kategori"),
-    [name, setName] = useState(""),
-    [detail, setDetail] = useState(""),
-    [unitOpen, setUnitOpen] = useState(false),
-    [tariffId, setTariffId] = useState(""),
-    [amount, setAmount] = useState(""),
-    [tariffOpen, setTariffOpen] = useState(false),
-    [tariffDirty, setTariffDirty] = useState(false),
-    [errors, setErrors] = useState<Record<string, string>>({}),
-    [message, setMessage] = useState("")
-  const canEdit = allowed(props, "master.write")
-  const unitDirty = !!(name || detail)
-  useUnsavedChanges((unitOpen && unitDirty) || (tariffOpen && tariffDirty))
-  const requiredText = (value: string) =>
-    value.trim() ? "" : "Kolom ini wajib diisi."
-  return (
-    <div className="page-stack">
-      <Saved text={message} />
-      <Panel
-        title={props.data.master.hospital}
-        description="Struktur, SDM, layanan, penjamin, diagnosis, dan tindakan dari master rumah sakit."
-        action={
-          <Button disabled={!canEdit} onClick={() => setUnitOpen(true)}>
-            Tambah unit simulasi
-          </Button>
-        }
-      >
-        <DataTable
-          rows={props.data.master.rows.filter(
-            (r) => category === "Semua kategori" || r.category === category
-          )}
-          search={(r) => `${r.id} ${r.name} ${r.detail}`}
-          placeholder="Cari kode atau nama master..."
-          filters={
-            <SelectControl
-              label="Kategori master"
-              options={[
-                "Semua kategori",
-                ...new Set(props.data.master.rows.map((r) => r.category)),
-              ]}
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            />
-          }
-          columns={[
-            { label: "Kode", render: (r) => r.id },
-            {
-              label: "Nama / kategori",
-              render: (r) => (
-                <>
-                  <strong>{r.name}</strong>
-                  <small className="block">{r.category}</small>
-                </>
-              ),
-            },
-            { label: "Keterangan", render: (r) => r.detail },
-            { label: "Status", render: (r) => <Status>{r.status}</Status> },
-          ]}
-        />
-      </Panel>
-      <Panel
-        title="Layanan dan tarif"
-        description="Perubahan master berlaku untuk snapshot baru. Tagihan yang sudah terbentuk tetap memakai tarif saat layanan dibebankan."
-      >
-        <DataTable
-          rows={props.data.master.services}
-          search={(s) => s.name}
-          columns={[
-            { label: "Layanan", render: (s) => s.name },
-            { label: "Tarif", render: (s) => rupiah(s.amount) },
-            {
-              label: "Aksi",
-              render: (s) => (
-                <Button
-                  disabled={!canEdit}
-                  variant="outline"
-                  onClick={() => {
-                    setTariffId(s.id)
-                    setAmount(String(s.amount))
-                    setTariffDirty(false)
-                    setTariffOpen(true)
-                  }}
-                >
-                  Ubah tarif
-                </Button>
-              ),
-            },
-          ]}
-        />
-      </Panel>
-      <Dialog
-        open={unitOpen}
-        onOpenChange={(open) => {
-          if (
-            !open &&
-            unitDirty &&
-            !window.confirm("Isian unit belum disimpan. Tutup formulir?")
-          )
-            return
-          setUnitOpen(open)
-        }}
-      >
-        <DialogContent className="simrs-ui">
-          <DialogHeader>
-            <DialogTitle>Tambah unit simulasi</DialogTitle>
-            <DialogDescription>
-              Menambahkan struktur master; tidak mengubah snapshot sesi yang
-              sudah ada.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            className="page-stack"
-            noValidate
-            onSubmit={async (e) => {
-              e.preventDefault()
-              const check = {
-                name: requiredText(name),
-                detail: requiredText(detail),
-              }
-              setErrors(check)
-              if (Object.values(check).some(Boolean)) return
-              if (await props.execute({ type: "master.unit", name, detail })) {
-                setUnitOpen(false)
-                setName("")
-                setDetail("")
-                setMessage("Unit rumah sakit berhasil disimpan.")
-              }
-            }}
-          >
-            <FormField
-              id="unit-name"
-              label="Nama unit sintetis"
-              required
-              error={errors.name}
-            >
-              <Input
-                id="unit-name"
-                value={name}
-                required
-                onChange={(e) => setName(e.target.value)}
-                onBlur={() =>
-                  setErrors({ ...errors, name: requiredText(name) })
-                }
-              />
-            </FormField>
-            <FormField
-              id="unit-detail"
-              label="Keterangan"
-              required
-              error={errors.detail}
-            >
-              <Textarea
-                id="unit-detail"
-                value={detail}
-                required
-                onChange={(e) => setDetail(e.target.value)}
-                onBlur={() =>
-                  setErrors({ ...errors, detail: requiredText(detail) })
-                }
-              />
-            </FormField>
-            <Button disabled={!canEdit}>Simpan unit</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={tariffOpen}
-        onOpenChange={(open) => {
-          if (
-            !open &&
-            tariffDirty &&
-            !window.confirm("Perubahan tarif belum disimpan. Tutup formulir?")
-          )
-            return
-          setTariffOpen(open)
-        }}
-      >
-        <DialogContent className="simrs-ui">
-          <DialogHeader>
-            <DialogTitle>Ubah tarif master</DialogTitle>
-            <DialogDescription>
-              {tariffId} · Perubahan dicatat dengan alasan; snapshot lama tetap
-              utuh.
-            </DialogDescription>
-          </DialogHeader>
-          <TariffForm
-            key={tariffId}
-            amount={amount}
-            setAmount={setAmount}
-            onDirtyChange={setTariffDirty}
-            disabled={!canEdit}
-            save={(reason) =>
-              props
-                .execute({
-                  type: "master.tariff",
-                  id: tariffId,
-                  amount: Number(amount),
-                  reason,
-                })
-                .then((ok) => {
-                  if (ok) {
-                    setTariffOpen(false)
-                    setTariffDirty(false)
-                    setMessage("Perubahan tarif tersimpan beserta alasan.")
-                  }
-                  return ok
-                })
-            }
-          />
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
-function TariffForm({
-  amount,
-  setAmount,
-  disabled,
-  save,
-  onDirtyChange,
-}: {
-  amount: string
-  setAmount: (v: string) => void
-  disabled: boolean
-  save: (reason: string) => Promise<boolean>
-  onDirtyChange: (dirty: boolean) => void
-}) {
-  const [reason, setReason] = useState("")
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  function validate() {
-    return {
-      amount:
-        Number.isInteger(Number(amount)) &&
-        Number(amount) > 0 &&
-        Number(amount) <= 100_000_000
-          ? ""
-          : "Masukkan Rupiah bulat positif, maksimal 100.000.000.",
-      reason: reason.trim() ? "" : "Jelaskan alasan perubahan tarif.",
-    }
-  }
-  return (
-    <form
-      className="page-stack"
-      noValidate
-      onChange={() => onDirtyChange(true)}
-      onSubmit={(e) => {
-        e.preventDefault()
-        const check = validate()
-        setErrors(check)
-        if (!Object.values(check).some(Boolean)) void save(reason)
-      }}
-    >
-      <FormField
-        id="tariff-amount"
-        label="Tarif baru (Rp)"
-        required
-        error={errors.amount}
-      >
-        <Input
-          id="tariff-amount"
-          type="number"
-          min={1}
-          step={1}
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          onBlur={() => setErrors({ ...errors, amount: validate().amount })}
-          required
-        />
-      </FormField>
-      <FormField
-        id="tariff-reason"
-        label="Alasan perubahan"
-        required
-        error={errors.reason}
-      >
-        <Textarea
-          id="tariff-reason"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          onBlur={() => setErrors({ ...errors, reason: validate().reason })}
-          required
-        />
-      </FormField>
-      <Button disabled={disabled}>Konfirmasi perubahan tarif</Button>
-    </form>
-  )
-}
 function OperationalReport(props: WorkspaceProps & { dashboard?: boolean }) {
   const stats = operationalSummary(props.data)
   function download() {
@@ -1894,6 +1975,7 @@ function OperationalReport(props: WorkspaceProps & { dashboard?: boolean }) {
           </dl>
         </Panel>
       )}
+      <JourneyExplorer {...props} />
       <Queue {...props} readOnly />
       <Notice title="Definisi laporan">
         Angka berasal dari transaksi pada lingkungan yang sedang dibuka.

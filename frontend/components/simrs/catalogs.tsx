@@ -2,7 +2,9 @@
 import { useState } from "react"
 import { CoreArea } from "./core-area"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { accounts } from "@/lib/platform/accounts"
+import { safeCoreDestination } from "@/lib/simrs/core-entry"
 import { Button } from "@/components/ui/button"
 import { FieldGroup } from "@/components/ui/field"
 import {
@@ -28,10 +30,19 @@ import {
 } from "./ui"
 
 export function Login() {
-  const { state, dispatch } = useDemo()
+  const { state, dispatch, pending } = useDemo()
   const router = useRouter()
-  const [role, setRole] = useState<Role>(state.role)
-  const [person, setPerson] = useState(state.participantId)
+  const query = useSearchParams()
+  const suggested = accounts.find((a) => a.id === query.get("akun") && a.active)
+  const [role, setRole] = useState<Role>(suggested?.role ?? state.role)
+  const [person, setPerson] = useState(
+    suggested?.participantId ?? state.participantId
+  )
+  const destination = safeCoreDestination(
+    query.get("lanjut"),
+    role,
+    state.participants.find((p) => p.id === person)?.actor
+  )
   return (
     <div className="login-grid">
       <section className="login-hero">
@@ -65,7 +76,11 @@ export function Login() {
             if (
               await dispatch({ type: "login", role, participantId: person })
             ) {
-              router.push(role === "Mahasiswa" ? "/sesi-aktif" : "/")
+              router.push(
+                role === "Mahasiswa"
+                  ? `/sesi-aktif${destination ? `?${new URLSearchParams({ lanjut: destination })}` : ""}`
+                  : (destination ?? "/")
+              )
               router.refresh()
             }
           }}
@@ -74,6 +89,12 @@ export function Login() {
             Gunakan akun contoh tanpa kata sandi. Sesi akun diperiksa server.
             Data fiktif tersimpan sementara selama server demo berjalan.
           </Notice>
+          {destination && (
+            <Notice title="Masuk untuk mengisi form SIMRS Inti">
+              Akun penginput sudah dipilih. Setelah masuk, mahasiswa membaca
+              atau melanjutkan briefing lalu kembali ke form tujuan.
+            </Notice>
+          )}
           <FieldGroup>
             <FormField id="login-role" label="Peran akun demo">
               <SelectControl
@@ -124,7 +145,9 @@ export function Login() {
               />
             </FormField>
           </FieldGroup>
-          <Button type="submit">Masuk sebagai {role}</Button>
+          <Button type="submit" disabled={pending}>
+            {pending ? "Memproses akun…" : `Masuk sebagai ${role}`}
+          </Button>
         </form>
       </Panel>
     </div>

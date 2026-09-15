@@ -10,6 +10,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { accounts } from "@/lib/platform/accounts"
+import { useRouter } from "next/navigation"
 import { initialState, type Action, type DemoState } from "@/lib/simrs/store"
 import { Notice } from "./ui"
 interface DemoContextValue {
@@ -20,6 +21,7 @@ interface DemoContextValue {
 }
 const DemoContext = createContext<DemoContextValue | null>(null)
 export function DemoProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
   const [state, setState] = useState<DemoState>({
     ...initialState,
     signedIn: false,
@@ -28,36 +30,85 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     [pending, setPending] = useState(false),
     [error, setError] = useState("")
   const running = useRef(false)
-  const refresh = useCallback(
-    () =>
-      fetch("/api/workspace", { cache: "no-store" })
-        .then(async (response) => {
-          const payload = await response.json()
-          if (response.status === 401 || response.status === 403) {
-            setState({ ...initialState, signedIn: false })
-            if (response.status === 403) setError(payload.error)
-            return
-          }
-          if (!response.ok) throw new Error(payload.error)
-          setState(payload.state)
-          setError("")
-        })
-        .catch(() => {
-          setError(
-            "Data belum dapat dimuat. Periksa koneksi ke server demo, lalu coba kembali."
-          )
-        })
-        .finally(() => {
-          setReady(true)
-        }),
-    []
-  )
+  const readVersion = useRef(0)
+  const accountRefreshQueued = useRef(false)
+  const accountChannel = useRef<BroadcastChannel | null>(null)
+  const lastIdentity = useRef<string | null>(null)
+  useEffect(() => {
+    if (!ready) return
+    const identity = `${state.signedIn}-${state.role}-${state.participantId}`
+    // Re-evaluate server-rendered page guards when another tab changes the account.
+    if (lastIdentity.current !== null && lastIdentity.current !== identity)
+      router.refresh()
+    lastIdentity.current = identity
+  }, [ready, state.signedIn, state.role, state.participantId, router])
+  const refresh = useCallback(async (force = false, accountOnly = false) => {
+    if (running.current && !force) {
+      accountRefreshQueued.current = true
+      return
+    }
+    const version = ++readVersion.current
+    return fetch("/api/workspace", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json()
+        if (version !== readVersion.current) return
+        if (response.status === 401 || response.status === 403) {
+          setState({ ...initialState, signedIn: false })
+          if (response.status === 403) setError(payload.error)
+          return
+        }
+        if (!response.ok) throw new Error(payload.error)
+        // A focus check must not replace an unsaved form merely because another tab saved a transaction.
+        setState((current) =>
+          accountOnly &&
+          current.signedIn === payload.state.signedIn &&
+          current.role === payload.state.role &&
+          current.participantId === payload.state.participantId
+            ? current
+            : payload.state
+        )
+        setError("")
+      })
+      .catch(() => {
+        if (version !== readVersion.current) return
+        setError(
+          "Data belum dapat dimuat. Periksa koneksi ke server demo, lalu coba kembali."
+        )
+      })
+      .finally(() => {
+        if (version === readVersion.current) setReady(true)
+      })
+  }, [])
   useEffect(() => {
     void refresh()
+  }, [refresh])
+  useEffect(() => {
+    const syncAccount = () => {
+      void refresh(false, true)
+    }
+    const visible = () => {
+      if (document.visibilityState === "visible") syncAccount()
+    }
+    const channel =
+      typeof BroadcastChannel !== "undefined"
+        ? new BroadcastChannel("simrs-demo-account")
+        : null
+    accountChannel.current = channel
+    if (channel) channel.onmessage = syncAccount
+    window.addEventListener("focus", syncAccount)
+    document.addEventListener("visibilitychange", visible)
+    return () => {
+      channel?.close()
+      accountChannel.current = null
+      window.removeEventListener("focus", syncAccount)
+      document.removeEventListener("visibilitychange", visible)
+    }
   }, [refresh])
   async function dispatch(action: Action) {
     if (running.current) return false
     running.current = true
+    // Ignore reads started before this mutation so an old account cannot overwrite its response.
+    readVersion.current++
     setPending(true)
     setError("")
     try {
@@ -94,12 +145,14 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       if (!response.ok) {
         if (response.status === 401)
           setState({ ...initialState, signedIn: false })
-        if (response.status === 409) await refresh()
+        if ([401, 403, 409].includes(response.status)) await refresh(true)
         throw new Error(payload.error || "Perubahan belum tersimpan.")
       }
       if (action.type === "logout")
         setState({ ...initialState, signedIn: false })
       else setState(payload.state)
+      if (action.type === "login" || action.type === "logout")
+        accountChannel.current?.postMessage("account-changed")
       return true
     } catch (error) {
       setError(
@@ -113,6 +166,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     } finally {
       running.current = false
       setPending(false)
+      if (accountRefreshQueued.current) {
+        accountRefreshQueued.current = false
+        void refresh(false, true)
+      }
     }
   }
   if (!ready)

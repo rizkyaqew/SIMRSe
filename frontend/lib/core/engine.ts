@@ -1,6 +1,7 @@
 import { hasCapability } from "../platform/permissions"
 import type { AuditFact, Capability, Principal } from "../platform/types"
 import { emptyRecord } from "./catalog"
+import { saveMaster } from "./master"
 import type {
   CoreCommand,
   CoreState,
@@ -167,6 +168,66 @@ export function executeCore(
     return patient
   }
   switch (command.type) {
+    case "master.hospital": {
+      requireCapability(principal, "master.write")
+      const name = text(command.name, "Nama rumah sakit", true)
+      if (name.length < 3 || name.length > 120)
+        fail("Nama rumah sakit harus 3–120 karakter.")
+      const reason = text(command.reason, "Alasan", true)
+      before = state.master.hospital
+      state.master.hospital = name
+      after = `${name} · ${reason}`
+      object = "HOSPITAL"
+      feature = "Master rumah sakit"
+      description = "Identitas rumah sakit diperbarui"
+      break
+    }
+    case "master.save": {
+      requireCapability(principal, "master.write")
+      const reason = text(command.reason, "Alasan", true)
+      const result = saveMaster(state.master, command.data)
+      before = result.previous ? JSON.stringify(result.previous) : "—"
+      after = JSON.stringify({ ...result.row, reason })
+      object = result.row.id
+      feature = "Master rumah sakit"
+      description = result.previous ? "Master diperbarui" : "Master ditambahkan"
+      break
+    }
+    case "patient.update": {
+      requireCapability(principal, "patient.write")
+      const patient =
+        state.patients.find((p) => p.id === command.id) ??
+        fail("Pasien tidak ditemukan.", 404)
+      if (
+        state.visits.some(
+          (v) => v.patientId === patient.id && v.record.finalized
+        )
+      )
+        fail(
+          "Identitas pasien terkait rekam medis final terkunci. Riwayat dokumen harus tetap utuh.",
+          409
+        )
+      const input = patientFields(command.patient)
+      const errors = validatePatient(input, state.master, now)
+      if (Object.keys(errors).length)
+        throw new DomainError("Periksa data pasien.", 422, errors)
+      if (
+        state.patients.some(
+          (p) => p.id !== patient.id && p.identity === input.identity
+        )
+      )
+        fail("Identitas sudah digunakan pasien lain.", 409)
+      const reason = text(command.reason, "Alasan koreksi", true)
+      before = JSON.stringify(patient)
+      const { unit: _unit, ...fields } = input
+      void _unit
+      Object.assign(patient, fields, { updatedAt: time })
+      after = JSON.stringify({ ...patient, reason })
+      object = patient.id
+      feature = "Pasien"
+      description = "Identitas pasien dikoreksi"
+      break
+    }
     case "patient.create": {
       requireCapability(principal, "patient.write")
       const patient = addPatient(command.patient)
